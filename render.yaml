@@ -1,34 +1,22 @@
+# render.yaml（無料お試し向け）
 services:
   - type: web
     name: delivery-navigator
     env: docker
-    plan: starter
+    plan: free
     dockerContext: .
     dockerfilePath: ./Dockerfile
     autoDeploy: true
-    healthCheckPath: /admin/login/
+    healthCheckPath: /
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: config.settings_prod
       - key: SECRET_KEY
         generateValue: true
       - key: ALLOWED_HOSTS
-        # 自動付与される *.onrender.com をあとで追加してください。複数はカンマ区切り
         value: localhost,127.0.0.1
-      - key: DATABASE_URL
-        fromDatabase:
-          name: delivery-postgres
-          property: connectionString
       - key: TESSERACT_CMD
         value: /usr/bin/tesseract
-    disk:
-      name: data
-      mountPath: /data
-      sizeGB: 1
     postDeployCommand: |
       python manage.py migrate --noinput && \
       python manage.py collectstatic --noinput
-
-databases:
-  - name: delivery-postgres
-    plan: starter

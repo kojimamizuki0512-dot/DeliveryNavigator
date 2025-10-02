@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Delivery Navigator - ダッシュボード</title>
+  <style>
+    :root{--bg:#f5f6f8;--card:#fff;--text:#222;--muted:#666;--shadow:0 2px 12px rgba(0,0,0,.08);--round:14px}
+    body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;margin:0;background:var(--bg);color:var(--text)}
+    .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
+    .title{font-size:22px;font-weight:700;margin:4px 0 12px}
+    .toolbar{display:flex;gap:8px;align-items:center;margin:8px 0 16px;flex-wrap:wrap}
+    .toolbar input{padding:6px 8px;border-radius:8px;border:1px solid #ddd;background:#fff}
+    .toolbar button,.toolbar a{padding:8px 14px;border-radius:10px;border:0;background:#0ea5e9;color:#fff;text-decoration:none;box-shadow:var(--shadow);cursor:pointer}
+    .toolbar a{background:#10b981}
+    .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+    .card{background:var(--card);border-radius:var(--round);padding:18px;box-shadow:var(--shadow)}
+    .card h3{margin:0 0 6px 0;font-size:13px;color:var(--muted);letter-spacing:.2px}
+    .card .num{font-size:28px;font-weight:800}
+    .muted{color:var(--muted);font-size:13px}
+    .box{background:var(--card);border-radius:var(--round);padding:16px;box-shadow:var(--shadow)}
+    @media (max-width:900px){.cards{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">ダッシュボード（直近14日）</div>
+
+    <div class="toolbar">
+      <label>開始</label><input type="date" id="in-start">
+      <label>終了</label><input type="date" id="in-end">
+      <button id="btn-reload">表示</button>
+      <a id="btn-csv" href="#" download>CSVダウンロード</a>
+      <span class="muted" id="range-text"></span>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <h3>合計 売上</h3>
+        <div class="num" id="sum-earnings">-</div>
+        <div class="muted" id="sum-orders">- 件</div>
+      </div>
+      <div class="card">
+        <h3>合計 稼働時間</h3>
+        <div class="num" id="sum-hours">- h</div>
+        <div class="muted">平均時給 <span id="hourly">-</span> 円</div>
+      </div>
+      <div class="card">
+        <h3>レコード数</h3>
+        <div class="num" id="count">- 日</div>
+        <div class="muted" id="range-note">期間</div>
+      </div>
+    </div>
+
+    <div class="box">
+      <canvas id="chart" height="130"></canvas>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    // 日付の文字
+    const dstr = d => d.toISOString().slice(0,10);
+    const today = new Date();
+    const defaultStart = new Date(today); defaultStart.setDate(today.getDate()-13);
+
+    // 入力
+    const $ = sel => document.querySelector(sel);
+    $('#in-start').value = dstr(defaultStart);
+    $('#in-end').value = dstr(today);
+
+    const yen = n => Math.round(n).toLocaleString('ja-JP');
+    const hr  = n => (Math.round(n*10)/10).toLocaleString('ja-JP');
+
+    let chart;
+
+    async function loadData(start, end){
+      $('#range-text').textContent = `${start} 〜 ${end}`;
+      $('#range-note').textContent = `${start} 〜 ${end}`;
+      // CSVリンク
+      $('#btn-csv').href = `/api/deliveries/export/?start=${start}&end=${end}`;
+
+      const res = await fetch(`/api/deliveries/?start=${start}&end=${end}`, {credentials:'same-origin'});
+      if(!res.ok){
+        alert('データを読めません。先に /admin でログインしてください。');
+        return;
+      }
+      const items = await res.json();
+
+      // 日ごとに合計
+      const byDay = {};
+      for(const it of items){
+        const k = it.date;
+        if(!byDay[k]) byDay[k] = {earnings:0, orders:0, hours:0};
+        byDay[k].earnings += parseFloat(it.earnings || 0);
+        byDay[k].orders   += parseInt(it.orders_completed || 0);
+        byDay[k].hours    += parseFloat(it.hours_worked || 0);
+      }
+
+      // ラベルと系列（欠け日は0）
+      const labels = [];
+      const barEarn = [];
+      const barOrders = [];
+      const lineHours = [];
+      let sumE=0,sumO=0,sumH=0,count=0;
+
+      const s = new Date(start), e = new Date(end);
+      for(let d = new Date(s); d <= e; d.setDate(d.getDate()+1)){
+        const k = dstr(d);
+        labels.push(k.slice(5));
+        const rec = byDay[k] || {earnings:0,orders:0,hours:0};
+        barEarn.push(rec.earnings);
+        barOrders.push(rec.orders);
+        lineHours.push(rec.hours);
+        sumE += rec.earnings; sumO += rec.orders; sumH += rec.hours;
+        if(byDay[k]) count++;
+      }
+
+      // 上のカード
+      $('#sum-earnings').textContent = yen(sumE) + ' 円';
+      $('#sum-orders').textContent   = yen(sumO) + ' 件';
+      $('#sum-hours').textContent    = hr(sumH) + ' h';
+      $('#hourly').textContent       = sumH > 0 ? yen(sumE/sumH) : '-';
+      $('#count').textContent        = count + ' 日';
+
+      // グラフ再描画
+      const ctx = document.getElementById('chart');
+      if(chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {label:'売上(円)', data: barEarn},
+            {label:'件数', data: barOrders},
+            {label:'時間(h)', data: lineHours, type:'line'}
+          ]
+        },
+        options: {
+          responsive:true,
+          interaction:{mode:'index', intersect:false},
+          scales:{ y:{ beginAtZero:true } }
+        }
+      });
+    }
+
+    // 初回読み込み
+    loadData($('#in-start').value, $('#in-end').value);
+
+    // ボタン
+    $('#btn-reload').addEventListener('click', () => {
+      const s = $('#in-start').value, e = $('#in-end').value;
+      if(!s || !e){ alert('開始と終了を入れてください'); return; }
+      loadData(s, e);
+    });
+  </script>
+</body>
+</html>

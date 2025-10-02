@@ -1,0 +1,62 @@
+from django.db import models
+from django.contrib.auth.models import AbstractUser
+from django.core.validators import MinValueValidator
+
+
+# --- 1. ユーザー ---
+class User(AbstractUser):
+    nickname = models.CharField(max_length=50, blank=True, null=True)
+    platform = models.CharField(max_length=50, blank=True, null=True)
+
+    def __str__(self):
+        return self.username
+
+
+# --- 2. 配達実績 ---
+class DeliveryRecord(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="delivery_records")
+    date = models.DateField()
+    orders_completed = models.PositiveIntegerField(validators=[MinValueValidator(0)], default=0)
+    earnings = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    hours_worked = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "date")
+
+    def __str__(self):
+        return f"{self.user.username} - {self.date}"
+
+
+# --- 3. 入口共有 ---
+class EntranceInfo(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="entrances")
+    address = models.CharField(max_length=255)
+    latitude = models.FloatField(blank=True, null=True)
+    longitude = models.FloatField(blank=True, null=True)
+    note = models.TextField(blank=True, null=True)
+    photo1 = models.ImageField(upload_to="entrances/", blank=True, null=True)
+    photo2 = models.ImageField(upload_to="entrances/", blank=True, null=True)
+    photo3 = models.ImageField(upload_to="entrances/", blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Entrance - {self.address}"
+
+
+# --- 4. OCRインポート履歴（任意だがあると便利） ---
+class OcrImport(models.Model):
+    STATUS_CHOICES = (("success", "success"), ("failed", "failed"))
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="ocr_imports")
+    image = models.ImageField(upload_to="ocr/")
+    raw_text = models.TextField(blank=True, null=True)
+    parsed_json = models.JSONField(default=dict, blank=True)
+    created_record = models.ForeignKey(
+        DeliveryRecord, on_delete=models.SET_NULL, blank=True, null=True, related_name="ocr_sources"
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="success")
+    message = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"OCR #{self.id} by {self.user.username}"

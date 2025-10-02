@@ -1,23 +1,5 @@
-FROM python:3.11-slim
-
-# 必要パッケージ（tesseract を含む）
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    tesseract-ocr \
- && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
-# 依存インストール
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
-
-# アプリ本体
-COPY . /app/
-
-# エントリポイント
-RUN chmod +x /app/entrypoint.sh
-CMD ["/app/entrypoint.sh"]
+#!/usr/bin/env bash
+set -e
+export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-config.settings_prod}"
+export TESSERACT_CMD="${TESSERACT_CMD:-/usr/bin/tesseract}"
+exec gunicorn config.wsgi:application --bind "0.0.0.0:${PORT:-8000}" --workers 2

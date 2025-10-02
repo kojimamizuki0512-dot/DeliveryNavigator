@@ -1,23 +1,26 @@
+# config/urls.py（全文）
+
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.generic import RedirectView
 
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from core.views import DashboardView, MapView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    # API
     path('api/', include('core.urls')),
 
-    # ダッシュボード / 地図
+    # 画面
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
     path('map/', MapView.as_view(), name='map'),
 
-    # JWT
-    path('api/auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    # ルートに来たらダッシュボードへ
+    path('', RedirectView.as_view(pattern_name='dashboard', permanent=False)),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# メディア（OCRアップロード画像など）
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

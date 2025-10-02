@@ -1,4 +1,4 @@
-# render.yaml（無料お試し向け）
+# render.yaml（無料お試し向け：SQLite / Diskなし）
 services:
   - type: web
     name: delivery-navigator
@@ -17,6 +17,3 @@ services:
         value: localhost,127.0.0.1
       - key: TESSERACT_CMD
         value: /usr/bin/tesseract
-    postDeployCommand: |
-      python manage.py migrate --noinput && \
-      python manage.py collectstatic --noinput

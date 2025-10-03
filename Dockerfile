@@ -1,19 +1,31 @@
+# 1) 軽量Python
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# OS パッケージ（tesseract を含む）
+# 2) 必要パッケージ（Tesseract含む）
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr libtesseract-dev ghostscript \
-    && rm -rf /var/lib/apt/lists/*
+    tesseract-ocr \
+    build-essential \
+    curl \
+ && rm -rf /var/lib/apt/lists/*
 
+# 3) 作業ディレクトリ
 WORKDIR /app
+
+# 4) 先に依存だけコピー＆インストール
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . /app/
+# 5) ソースコード
+COPY . /app
 
-# Cloud Run が PORT を注入 -> entrypoint.sh が $PORT で待ち受け
+# 6) エントリポイント（実行権限）
 RUN chmod +x /app/entrypoint.sh
+
+# 7) ポート（KoyebはPORT環境変数を渡してくる）
+EXPOSE 8000
+
+# 8) 起動
 CMD ["/app/entrypoint.sh"]

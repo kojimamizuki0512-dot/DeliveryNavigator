@@ -22,6 +22,13 @@
     .card h3{margin:0 0 6px 0}
     .muted{color:#9fb1cc}
     footer{border-top:1px solid #1f2a44;margin-top:24px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px 10px;border-bottom:1px solid #203055;text-align:left}
+    th{color:#c7d4ea}
+    .btn{padding:6px 10px;border:1px solid #203055;border-radius:8px;background:#0f1a33;color:#e6edf3;text-decoration:none;cursor:pointer}
+    .btn:hover{background:#14254a}
+    dialog{border:1px solid #203055;border-radius:12px;background:#0f1a33;color:#e6edf3}
+    input,select{background:#0b162f;border:1px solid #203055;border-radius:8px;color:#e6edf3;padding:6px 8px}
   </style>
 </head>
 <body>
@@ -32,6 +39,7 @@
       {% with current=request.resolver_match.url_name %}
         <a class="nav {% if current == 'home' %}active{% endif %}" href="{% url 'home' %}">ホーム</a>
         <a class="nav {% if current == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}">ダッシュボード</a>
+        <a class="nav {% if current == 'records' %}active{% endif %}" href="{% url 'records' %}">実績一覧</a>
         <a class="nav {% if current == 'map' %}active{% endif %}" href="{% url 'map' %}">AIマップ</a>
         <a class="nav {% if current == 'upload' %}active{% endif %}" href="{% url 'upload' %}">データ取込</a>
         <span style="flex:1"></span>

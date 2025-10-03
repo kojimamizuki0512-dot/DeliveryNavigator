@@ -257,7 +257,7 @@ class MeView(generics.RetrieveUpdateAPIView):
 # ---------- 画面（ユーザー向け） ----------
 
 class DashboardView(LoginRequiredMixin, TemplateView):
-    login_url = '/login/'   # 一般ユーザーのログイン画面へ
+    login_url = '/login/'
     template_name = 'dashboard.html'
 
 
@@ -269,6 +269,12 @@ class MapView(LoginRequiredMixin, TemplateView):
 class UploadView(LoginRequiredMixin, TemplateView):
     login_url = '/login/'
     template_name = 'upload.html'
+
+
+class RecordsView(LoginRequiredMixin, TemplateView):
+    """実績一覧/編集（フロントはAPI呼び出し）"""
+    login_url = '/login/'
+    template_name = 'records.html'
 
 
 # ---------- サインアップ（UI） ----------
@@ -284,7 +290,7 @@ class SignUpForm(UserCreationForm):
 class SignUpView(FormView):
     template_name = "signup.html"
     form_class = SignUpForm
-    # ★ 登録後はトップへ
+    # 登録後はトップへ
     success_url = reverse_lazy("home")
 
     def form_valid(self, form):

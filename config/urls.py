@@ -3,10 +3,10 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
-# Home と healthz は config.views から
+# Home/healthz は config.views
 from . import views
-# ダッシュボード/マップは core 側のまま
-from core.views import DashboardView, MapView
+# ダッシュボード/マップ/アップロードは core 側
+from core.views import DashboardView, MapView, UploadView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -18,6 +18,7 @@ urlpatterns = [
     path('', views.HomeView.as_view(), name='home'),
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
     path('map/', MapView.as_view(), name='map'),
+    path('upload/', UploadView.as_view(), name='upload'),   # ★ 追加
 
     path('healthz', views.healthz),
 ]

@@ -405,3 +405,10 @@ class OcrImportView(generics.GenericAPIView):
 
 def healthz(request):
     return JsonResponse({"status": "ok"})
+
+
+class UploadView(LoginRequiredMixin, TemplateView):
+    login_url = '/admin/login/'
+    template_name = 'upload.html'
+# --- ここまで追加 ---
+

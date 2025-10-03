@@ -1,21 +1,61 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}ホーム | Delivery Navigator{% endblock %}
-{% block content %}
-  <h1 style="margin:0 0 8px 0;">ようこそ</h1>
-  <p class="muted">ここから主要機能へ移動できます。</p>
+{% block meta_description %}配達実績の記録・可視化・OCR取り込み。ホームから各機能に移動できます。{% endblock %}
 
-  <div class="grid">
-    <a class="card" href="{% url 'dashboard' %}" style="text-decoration:none;color:inherit">
-      <h3>ダッシュボード →</h3>
-      <p class="muted">直近の実績と指標を確認</p>
-    </a>
-    <a class="card" href="{% url 'map' %}" style="text-decoration:none;color:inherit">
-      <h3>AIマップ →</h3>
-      <p class="muted">ヒートマップで稼ぎどころを可視化</p>
-    </a>
-    <a class="card" href="{% url 'upload' %}" style="text-decoration:none;color:inherit">
-      <h3>データ取込（OCR） →</h3>
-      <p class="muted">スクショやCSVから実績登録</p>
-    </a>
+{% block content %}
+
+<!-- ===== Hero（上部に大きく画像） ===== -->
+<section class="hero">
+  <img src="{% static 'img/home-hero.png' %}" alt="港湾エリアの夜景（サンプル）">
+  <div class="hero-overlay">
+    <h1>ようこそ</h1>
+    <p>ここから主要機能へ移動できます。</p>
   </div>
+</section>
+
+<!-- ===== 主要カード ===== -->
+<div class="grid" style="margin-top:16px">
+  <a class="card link" href="{% url 'dashboard' %}">
+    <h3>ダッシュボード →</h3>
+    <div class="muted">直近の実績と指標を確認</div>
+  </a>
+
+  <a class="card link" href="{% url 'map' %}">
+    <h3>AIマップ →</h3>
+    <div class="muted">ヒートマップで稼ぎどころを可視化</div>
+  </a>
+
+  <a class="card link" href="{% url 'upload' %}">
+    <h3>データ取込（OCR） →</h3>
+    <div class="muted">スクショやCSVから実績登録</div>
+  </a>
+
+  <a class="card link" href="{% url 'records' %}">
+    <h3>実績一覧 →</h3>
+    <div class="muted">期間絞り込み・編集・削除・CSV出力</div>
+  </a>
+</div>
+
+<style>
+  /* ---- Home専用の軽いスタイル ---- */
+  .hero{
+    position:relative;overflow:hidden;border-radius:16px;
+    border:1px solid #203055; background:#0f1a33;
+  }
+  .hero img{
+    display:block; width:100%; height:320px; object-fit:cover;
+    filter:saturate(1.05) contrast(1.05);
+  }
+  .hero-overlay{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    justify-content:flex-end; padding:18px 20px;
+    background:linear-gradient(180deg, rgba(11,16,32,0) 30%, rgba(11,16,32,.55) 70%, rgba(11,16,32,.85) 100%);
+  }
+  .hero-overlay h1{ margin:0 0 4px 0; font-size:28px; }
+  .hero-overlay p{ margin:0; color:#9fb1cc; }
+  .card.link{ text-decoration:none; color:inherit; transition:transform .08s ease, background .16s ease; }
+  .card.link:hover{ transform:translateY(-1px); background:#122047; }
+</style>
+
 {% endblock %}

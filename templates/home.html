@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}ホーム | Delivery Navigator{% endblock %}
+{% block content %}
+  <h1 style="margin:0 0 8px 0;">ようこそ</h1>
+  <p class="muted">ここから主要機能へ移動できます。</p>
+
+  <div class="grid">
+    <a class="card" href="{% url 'dashboard' %}" style="text-decoration:none;color:inherit">
+      <h3>ダッシュボード →</h3>
+      <p class="muted">直近の実績と指標を確認</p>
+    </a>
+    <a class="card" href="{% url 'map' %}" style="text-decoration:none;color:inherit">
+      <h3>AIマップ →</h3>
+      <p class="muted">ヒートマップで稼ぎどころを可視化</p>
+    </a>
+    {# 必要に応じてカード追加
+    <a class="card" href="{% url 'upload' %}" style="text-decoration:none;color:inherit">
+      <h3>データ取込（OCR） →</h3>
+      <p class="muted">スクショやCSVから実績登録</p>
+    </a>
+    #}
+  </div>
+{% endblock %}
+

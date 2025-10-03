@@ -5,7 +5,7 @@ import shutil
 import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils.dateparse import parse_date
 from django.core.files.base import ContentFile
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -58,8 +58,7 @@ def _ensure_tesseract_path():
 def _ocr_image_to_text(image_bytes: bytes) -> str:
     _ensure_tesseract_path()
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    # psm=6 は 1 段落のブロックとして読みやすいモード（表形式でない単純な画面に強い）
-    cfg = "--psm 6"
+    cfg = "--psm 6"  # 1 段落ブロック向け
     try:
         return pytesseract.image_to_string(img, lang="jpn+eng", config=cfg)
     except Exception:
@@ -70,11 +69,10 @@ def _parse_numbers(text: str):
     """
     OCR文字列から ゆるく数値を拾う（無ければ None）
     - 日付: YYYY[-./]MM[-./]DD
-    - 件数: 「◯件」/「Orders: 12」/「Deliveries: 12」など
-    - 売上: 円/¥/JPY 付きの数値や「Earnings: 5600 JPY」
-    - 時間: 「3.5 h」/「3.5時間」/「Hours: 3.5 h」
+    - 件数: 「◯件」/「Orders: 12」/「Deliveries: 12」
+    - 売上: 円/¥/JPY 付きや「Earnings: 5600 JPY」
+    - 時間: 「3.5 h」/「3.5時間」
     """
-    # 正規化（全角コロンなど）
     norm = text.replace("：", ":").replace("　", " ")
 
     # 日付
@@ -87,13 +85,13 @@ def _parse_numbers(text: str):
         except ValueError:
             date = None
 
-    # 件数（優先: ラベル → 末尾「件」）
+    # 件数
     orders = None
     for pat in [
-        r"\bOrders?\s*:\s*(\d+)\b",                  # Orders: 12 / Order: 1
-        r"\bDeliveries?\s*:\s*(\d+)\b",               # Deliveries: 12
-        r"(?:件数|配達回数|配達数|注文数|オーダー数)\s*:\s*(\d+)",  # 日本語ラベル
-        r"(\d+)\s*件",                                 # 12件
+        r"\bOrders?\s*:\s*(\d+)\b",
+        r"\bDeliveries?\s*:\s*(\d+)\b",
+        r"(?:件数|配達回数|配達数|注文数|オーダー数)\s*:\s*(\d+)",
+        r"(\d+)\s*件",
     ]:
         m = re.search(pat, norm, re.IGNORECASE)
         if m:
@@ -103,7 +101,7 @@ def _parse_numbers(text: str):
             except Exception:
                 pass
 
-    # 売上（優先: Earningsラベル → 通貨付き数値の最大）
+    # 売上
     earnings = None
     m = re.search(r"\bEarnings?\s*:\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)", norm, re.IGNORECASE)
     if m:
@@ -120,11 +118,11 @@ def _parse_numbers(text: str):
             except Exception:
                 pass
 
-    # 稼働時間（優先: Hoursラベル → 単位付き）
+    # 稼働時間
     hours = None
     for pat in [
-        r"\bHours?\s*:\s*(\d+(?:\.\d+)?)\s*h\b",     # Hours: 3.5 h
-        r"(\d+(?:\.\d+)?)\s*(?:h|時間)\b",           # 3.5 h / 3.5時間
+        r"\bHours?\s*:\s*(\d+(?:\.\d+)?)\s*h\b",
+        r"(\d+(?:\.\d+)?)\s*(?:h|時間)\b",
     ]:
         m = re.search(pat, norm, re.IGNORECASE)
         if m:
@@ -137,7 +135,7 @@ def _parse_numbers(text: str):
     return {"date": date, "orders": orders, "earnings": earnings, "hours": hours}
 
 
-# Decimal を安全に作る（None/空/非数値は None を返す）
+# Decimal を安全に作る
 Q2 = Decimal("0.01")
 def _to_decimal_or_none(val):
     if val is None:
@@ -259,6 +257,13 @@ class MeView(generics.RetrieveUpdateAPIView):
         return self.request.user
 
 
+# ---------- 画面（ユーザー向け） ----------
+
+class HomeView(TemplateView):
+    """トップページ（共通ナビの起点）"""
+    template_name = "home.html"
+
+
 class DashboardView(LoginRequiredMixin, TemplateView):
     login_url = '/admin/login/'
     template_name = 'dashboard.html'
@@ -268,6 +273,8 @@ class MapView(LoginRequiredMixin, TemplateView):
     login_url = '/admin/login/'
     template_name = 'map.html'
 
+
+# ---------- OCR 取り込み ----------
 
 class OcrImportView(generics.GenericAPIView):
     """
@@ -332,7 +339,7 @@ class OcrImportView(generics.GenericAPIView):
         if dec is not None:
             defaults["hours_worked"] = dec
 
-        # 既存レコードの安全取得（Decimal列を読み込まない）
+        # 既存レコードの安全取得
         existing_id = (
             DeliveryRecord.objects
             .filter(user=request.user, date=date)
@@ -352,7 +359,7 @@ class OcrImportView(generics.GenericAPIView):
             rec.save()
             created = True
 
-        # 既存なら「読めた項目だけ」更新（Decimalは必ず quantize 済）
+        # 既存なら「読めた項目だけ」更新
         updated_fields = []
         if not created:
             if parsed["orders"] is not None:
@@ -382,7 +389,7 @@ class OcrImportView(generics.GenericAPIView):
         job.created_record = rec
         job.save()
 
-        # 念のため、直後のシリアライズでも落ちないよう rec を最新で取得
+        # 念のため最新を取得
         rec = DeliveryRecord.objects.get(pk=rec.pk)
 
         return Response({
@@ -393,8 +400,8 @@ class OcrImportView(generics.GenericAPIView):
             "raw_text": raw_text,
         }, status=201)
 
-# ...既存の import の下あたりに追加
-from django.http import JsonResponse
+
+# ---------- ヘルスチェック ----------
 
 def healthz(request):
     return JsonResponse({"status": "ok"})

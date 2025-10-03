@@ -392,3 +392,9 @@ class OcrImportView(generics.GenericAPIView):
             "parsed": job.parsed_json,
             "raw_text": raw_text,
         }, status=201)
+
+# ...既存の import の下あたりに追加
+from django.http import JsonResponse
+
+def healthz(request):
+    return JsonResponse({"status": "ok"})

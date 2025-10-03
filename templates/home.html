@@ -2,56 +2,100 @@
 {% load static %}
 {% block title %}ホーム | Delivery Navigator{% endblock %}
 
-{% block content %}
-
-<!-- Hero -->
-<section class="relative overflow-hidden rounded-2xl border border-slate-800 shadow-glass">
-  <img src="{% static 'img/home-hero.png' %}" alt="Hero" class="w-full h-[360px] object-cover transition
-             scale-100 hover:scale-[1.02] duration-700">
-  <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-900/20 to-transparent"></div>
-  <div class="absolute inset-x-0 bottom-0 p-6 sm:p-8">
-    <h1 class="text-2xl sm:text-3xl font-bold">ようこそ</h1>
-    <p class="text-slate-300 mt-1">ここから主要機能へ移動できます。</p>
-    <div class="mt-4 flex gap-3">
-      <a href="{% url 'dashboard' %}" class="px-4 py-2 rounded-lg bg-brand-500 text-slate-900 font-semibold hover:opacity-90 transition">ダッシュボードを見る</a>
-      <a href="{% url 'upload' %}" class="px-4 py-2 rounded-lg bg-slate-800/80 border border-slate-700 hover:bg-slate-700/80 transition">データを取り込む</a>
+{% block header %}
+<section style="position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--line);">
+  <div style="
+      background-image:url('{% static 'img/home-hero.jpg' %}');
+      background-size:cover;background-position:center;
+      min-height:260px;filter:brightness(.72);">
+  </div>
+  <div style="position:absolute;inset:0;display:flex;align-items:center">
+    <div style="padding:24px">
+      <div class="chip">あなたの稼ぎを可視化</div>
+      <h1 style="margin:8px 0 6px 0;font-size:28px;font-weight:800">Delivery Navigator</h1>
+      <p class="muted" style="max-width:760px">実績の登録から可視化、時間帯×曜日ヒートマップで「いつ稼げるか」を教えます。</p>
+      <div class="row" style="margin-top:10px">
+        <a class="btn primary" href="{% url 'dashboard' %}">ダッシュボード</a>
+        <a class="btn" href="/records">実績を入力</a>
+        <a class="btn ghost" href="/upload">OCRで取込</a>
+      </div>
     </div>
   </div>
 </section>
+{% endblock %}
 
-<!-- Cards -->
-<section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-  <a href="{% url 'dashboard' %}" class="group rounded-2xl border border-slate-800 bg-slate-900/50 p-5 hover:bg-slate-900 transition">
-    <div class="flex items-center justify-between">
-      <h3 class="text-lg font-semibold">ダッシュボード</h3>
-      <span class="text-slate-400 group-hover:translate-x-1 transition">→</span>
+{% block content %}
+
+<div class="grid cols-3" style="margin-top:16px">
+  <div class="card">
+    <h3 style="margin:0 0 4px 0">クイックアクション</h3>
+    <div class="grid cols-2" style="margin-top:8px">
+      <a class="btn" href="/records">今日の実績を追加</a>
+      <a class="btn" href="/api/deliveries/export/">CSVエクスポート</a>
+      <a class="btn" href="/upload">スクショから取込</a>
+      <a class="btn" href="{% url 'map' %}">AIマップを見る</a>
     </div>
-    <p class="text-slate-400 mt-1">直近の実績と指標を確認</p>
-  </a>
+  </div>
 
-  <a href="{% url 'map' %}" class="group rounded-2xl border border-slate-800 bg-slate-900/50 p-5 hover:bg-slate-900 transition">
-    <div class="flex items-center justify-between">
-      <h3 class="text-lg font-semibold">AIマップ</h3>
-      <span class="text-slate-400 group-hover:translate-x-1 transition">→</span>
-    </div>
-    <p class="text-slate-400 mt-1">ヒートマップで稼ぎどころを可視化</p>
-  </a>
+  <div class="card">
+    <h3 style="margin:0 0 4px 0">今月のハイライト</h3>
+    <div id="monthKpi" class="grid cols-2" style="margin-top:8px"></div>
+  </div>
 
-  <a href="{% url 'upload' %}" class="group rounded-2xl border border-slate-800 bg-slate-900/50 p-5 hover:bg-slate-900 transition">
-    <div class="flex items-center justify-between">
-      <h3 class="text-lg font-semibold">データ取込（OCR）</h3>
-      <span class="text-slate-400 group-hover:translate-x-1 transition">→</span>
-    </div>
-    <p class="text-slate-400 mt-1">スクショやCSVから実績登録</p>
-  </a>
+  <div class="card">
+    <h3 style="margin:0 0 4px 0">おすすめ時間帯</h3>
+    <p id="topSlots" class="muted" style="margin:8px 0 0 0">分析中…</p>
+  </div>
+</div>
 
-  <a href="{% url 'records' %}" class="group rounded-2xl border border-slate-800 bg-slate-900/50 p-5 hover:bg-slate-900 transition">
-    <div class="flex items-center justify-between">
-      <h3 class="text-lg font-semibold">実績一覧</h3>
-      <span class="text-slate-400 group-hover:translate-x-1 transition">→</span>
-    </div>
-    <p class="text-slate-400 mt-1">期間絞り込み・編集・削除・CSV出力</p>
-  </a>
-</section>
+{% if request.user.is_authenticated %}
+<div class="card" style="margin-top:16px">
+  <h3 style="margin:0">最近の実績（5件）</h3>
+  <table style="margin-top:8px">
+    <thead><tr><th>日付</th><th>件数</th><th>売上(円)</th><th>時間</th><th>開始</th><th>終了</th></tr></thead>
+    <tbody id="recent"></tbody>
+  </table>
+  <div style="text-align:right;margin-top:8px"><a class="btn" href="/records">すべて見る</a></div>
+</div>
+{% endif %}
 
+<script>
+(function(){
+  const yen = n => (Math.round(+n)).toLocaleString('ja-JP');
+  const fmt = d=>`${d.getFullYear()}-${('0'+(d.getMonth()+1)).slice(-2)}-${('0'+d.getDate()).slice(-2)}`;
+  const today=new Date(), monthStart=new Date(today.getFullYear(), today.getMonth(), 1);
+
+  // KPI
+  fetch(`/api/deliveries/summary?start=${fmt(monthStart)}&end=${fmt(today)}`)
+    .then(r=>r.json()).then(s=>{
+      document.getElementById('monthKpi').innerHTML = `
+        <div class="card"><div class="muted">売上合計</div><div style="font-size:22px;font-weight:800">${yen(s.total_earnings||0)} 円</div></div>
+        <div class="card"><div class="muted">件数</div><div style="font-size:22px;font-weight:800">${s.total_orders||0} 件</div></div>
+      `;
+    });
+
+  // おすすめ時間帯（直近30日）
+  const start=new Date(); start.setDate(today.getDate()-29);
+  fetch(`/api/deliveries/heatmap?start=${fmt(start)}&end=${fmt(today)}`)
+    .then(r=>r.json()).then(d=>{
+      const slots = (d.top_slots||[]).map(x=>`${x.label}：<b>${x.hourly.toLocaleString()}円/h</b>`).join(' ・ ');
+      document.getElementById('topSlots').innerHTML = slots || '（時刻の入った実績が少ないため、まずは /records で開始/終了を入れてみてください）';
+    });
+
+  // 最近5件
+  {% if request.user.is_authenticated %}
+  fetch('/api/deliveries/')
+    .then(r=>r.json()).then(data=>{
+      const rows = Array.isArray(data) ? data.slice(0,5) : (data.results||[]).slice(0,5);
+      document.getElementById('recent').innerHTML = rows.map(r=>`
+        <tr>
+          <td>${r.date}</td><td>${r.orders_completed}</td>
+          <td>${r.earnings}</td><td>${r.hours_worked??''}</td>
+          <td>${r.start_time??''}</td><td>${r.end_time??''}</td>
+        </tr>
+      `).join('');
+    });
+  {% endif %}
+})();
+</script>
 {% endblock %}

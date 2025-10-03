@@ -1,91 +1,128 @@
 {% extends "base.html" %}
-{% block title %}実績一覧 | Delivery Navigator{% endblock %}
+{% block title %}実績入力 | Delivery Navigator{% endblock %}
+
+{% block header %}
+<h1 style="margin:6px 0 0 0">実績入力</h1>
+<p class="muted" style="margin:4px 0 0 0">日ごとの実績を登録します。ヒートマップ精度のため、開始/終了時刻も入れるのがおすすめ。</p>
+{% endblock %}
+
 {% block content %}
-<h1 class="text-xl font-bold">実績一覧</h1>
-<p class="muted">期間で絞り込み、各行の編集/削除、新規作成ができます（開始/終了時刻はヒートマップ用に任意入力）。</p>
+<div class="grid cols-2">
+  <div class="card">
+    <h3 style="margin:0 0 8px 0">新規追加</h3>
+    <form id="create" class="grid cols-2">
+      {% csrf_token %}
+      <div><label>日付</label><input type="date" name="date" required></div>
+      <div><label>件数</label><input type="number" name="orders_completed" min="0" value="0" required></div>
+      <div><label>売上(円)</label><input type="number" name="earnings" step="0.01" min="0" value="0" required></div>
+      <div><label>稼働時間(h)</label><input type="number" name="hours_worked" step="0.01" min="0" placeholder="例: 3.5"></div>
+      <div><label>開始</label><input type="time" name="start_time" step="900"></div>
+      <div><label>終了</label><input type="time" name="end_time" step="900"></div>
+      <div><button class="btn primary" type="submit">追加</button></div>
+    </form>
+  </div>
 
-<form id="filter" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:12px 0;">
-  <div><label>開始日</label><br><input type="date" name="start"></div>
-  <div><label>終了日</label><br><input type="date" name="end"></div>
-  <button type="submit" class="btn">この期間で表示</button>
-  <a class="btn" href="/api/deliveries/export/">CSVエクスポート</a>
-</form>
+  <div class="card">
+    <h3 style="margin:0 0 8px 0">絞り込み & ツール</h3>
+    <form id="filter" class="grid cols-2">
+      <div><label>開始日</label><input type="date" name="start"></div>
+      <div><label>終了日</label><input type="date" name="end"></div>
+      <div class="row"><button class="btn" type="submit">この期間で表示</button><a class="btn ghost" href="/api/deliveries/export/">CSVエクスポート</a></div>
+    </form>
+    <p class="muted" style="margin:8px 0 0 0">件名をクリックで編集できます。</p>
+  </div>
+</div>
 
-<table id="tbl">
-  <thead>
-    <tr>
-      <th>日付</th><th>件数</th><th>売上(円)</th><th>稼働時間(h)</th><th>開始</th><th>終了</th><th>時給(円)</th><th></th>
-    </tr>
-  </thead>
-  <tbody></tbody>
-</table>
-
-<h2 style="margin:24px 0 8px 0;">新規追加</h2>
-<form id="create" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;max-width:860px;">
-  {% csrf_token %}
-  <div><label>日付</label><br><input type="date" name="date" required></div>
-  <div><label>件数</label><br><input type="number" name="orders_completed" min="0" value="0" required></div>
-  <div><label>売上(円)</label><br><input type="number" name="earnings" step="0.01" min="0" value="0" required></div>
-  <div><label>稼働時間(h)</label><br><input type="number" name="hours_worked" step="0.01" min="0"></div>
-  <div><label>開始</label><br><input type="time" name="start_time" step="900"></div>
-  <div><label>終了</label><br><input type="time" name="end_time" step="900"></div>
-  <div style="align-self:end"><button class="btn" type="submit">追加</button></div>
-</form>
+<div class="card" style="margin-top:14px">
+  <div class="row" style="justify-content:space-between;align-items:center">
+    <h3 style="margin:0">登録済み</h3>
+    <span id="count" class="muted"></span>
+  </div>
+  <table style="margin-top:8px" id="tbl">
+    <thead>
+      <tr>
+        <th>日付</th><th>件数</th><th>売上(円)</th><th>時間</th><th>開始</th><th>終了</th><th>時給</th><th></th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
 
 <dialog id="dlg">
-  <form method="dialog" id="edit">
+  <form method="dialog" id="edit" class="grid cols-2" style="min-width:560px">
     {% csrf_token %}
-    <h3 style="margin:0 0 8px 0;">編集</h3>
+    <h3 style="grid-column:1/-1;margin:0 0 6px 0">編集</h3>
     <input type="hidden" name="id">
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;min-width:540px;">
-      <div><label>日付</label><br><input type="date" name="date" required></div>
-      <div><label>件数</label><br><input type="number" name="orders_completed" min="0" required></div>
-      <div><label>売上(円)</label><br><input type="number" name="earnings" step="0.01" min="0" required></div>
-      <div><label>稼働時間(h)</label><br><input type="number" name="hours_worked" step="0.01" min="0"></div>
-      <div><label>開始</label><br><input type="time" name="start_time" step="900"></div>
-      <div><label>終了</label><br><input type="time" name="end_time" step="900"></div>
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+    <div><label>日付</label><input type="date" name="date" required></div>
+    <div><label>件数</label><input type="number" name="orders_completed" min="0" required></div>
+    <div><label>売上(円)</label><input type="number" name="earnings" step="0.01" min="0" required></div>
+    <div><label>稼働時間(h)</label><input type="number" name="hours_worked" step="0.01" min="0"></div>
+    <div><label>開始</label><input type="time" name="start_time" step="900"></div>
+    <div><label>終了</label><input type="time" name="end_time" step="900"></div>
+    <div class="row" style="grid-column:1/-1;justify-content:flex-end;margin-top:6px">
       <button class="btn" value="cancel">キャンセル</button>
-      <button class="btn" id="btn-save" value="default">保存</button>
+      <button class="btn primary" id="btn-save" value="default">保存</button>
     </div>
   </form>
 </dialog>
 
 <script>
   function getCookie(n){const v=`; ${document.cookie}`.split(`; ${n}=`);if(v.length===2)return v.pop().split(';').shift();}
-  function hourly(r){const h=parseFloat(r.hours_worked||0),e=parseFloat(r.earnings||0);return h?Math.round(e/h):"";}
+  const yen=n=>(Math.round(+n)).toLocaleString('ja-JP');
+  const hourly=r=>{const h=parseFloat(r.hours_worked||0),e=parseFloat(r.earnings||0);return h?yen(e/h):""};
+
   async function load(){
     const f=new FormData(document.getElementById('filter'));const q=[];
     if(f.get('start'))q.push('start='+encodeURIComponent(f.get('start')));
     if(f.get('end'))q.push('end='+encodeURIComponent(f.get('end')));
     const res=await fetch('/api/deliveries/'+(q.length?('?'+q.join('&')):'')); const data=await res.json();
-    const rows=Array.isArray(data)?data:(data.results||[]); const tbody=document.querySelector('#tbl tbody'); tbody.innerHTML='';
+    const rows=Array.isArray(data)?data:(data.results||[]);
+    document.getElementById('count').textContent=`${rows.length}件`;
+    const tbody=document.querySelector('#tbl tbody'); tbody.innerHTML='';
     rows.forEach(r=>{
       const tr=document.createElement('tr');
       tr.innerHTML=`
-        <td>${r.date}</td>
+        <td><button class="btn ghost btn-edit" data-id="${r.id}" title="クリックで編集">${r.date}</button></td>
         <td>${r.orders_completed}</td>
         <td>${r.earnings}</td>
         <td>${r.hours_worked??''}</td>
         <td>${r.start_time??''}</td>
         <td>${r.end_time??''}</td>
         <td>${hourly(r)}</td>
-        <td><button class="btn btn-edit" data-id="${r.id}">編集</button> <button class="btn btn-del" data-id="${r.id}">削除</button></td>`;
+        <td><button class="btn btn-del" data-id="${r.id}">削除</button></td>`;
       tbody.appendChild(tr);
     });
   }
+
   document.getElementById('filter').addEventListener('submit',(e)=>{e.preventDefault();load();});
+
   document.getElementById('create').addEventListener('submit',async(e)=>{
-    e.preventDefault(); const fd=new FormData(e.target);
-    const body={date:fd.get('date'),orders_completed:+(fd.get('orders_completed')||0),earnings:fd.get('earnings'),hours_worked:fd.get('hours_worked')||null,start_time:fd.get('start_time')||null,end_time:fd.get('end_time')||null};
-    const res=await fetch('/api/deliveries/',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')||''},body:JSON.stringify(body)});
-    if(!res.ok){alert('作成に失敗');return;} e.target.reset(); load();
+    e.preventDefault();
+    const fd=new FormData(e.target);
+    const body={
+      date:fd.get('date'),
+      orders_completed:+(fd.get('orders_completed')||0),
+      earnings:fd.get('earnings'),
+      hours_worked:fd.get('hours_worked')||null,
+      start_time:fd.get('start_time')||null,
+      end_time:fd.get('end_time')||null
+    };
+    const res=await fetch('/api/deliveries/',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')||''},
+      body:JSON.stringify(body)
+    });
+    if(!res.ok){alert('作成に失敗しました');return;}
+    e.target.reset(); load();
   });
+
   document.querySelector('#tbl').addEventListener('click',async(e)=>{
     const btn=e.target.closest('button'); if(!btn)return; const id=btn.dataset.id;
-    if(btn.classList.contains('btn-del')){ if(!confirm('削除しますか？'))return;
-      const res=await fetch('/api/deliveries/'+id+'/',{method:'DELETE',headers:{'X-CSRFToken':getCookie('csrftoken')||''}}); if(!res.ok){alert('削除に失敗');return;} load(); return; }
+    if(btn.classList.contains('btn-del')){
+      if(!confirm('削除しますか？'))return;
+      const res=await fetch('/api/deliveries/'+id+'/',{method:'DELETE',headers:{'X-CSRFToken':getCookie('csrftoken')||''}});
+      if(!res.ok){alert('削除に失敗しました');return;} load(); return;
+    }
     if(btn.classList.contains('btn-edit')){
       const r=await (await fetch('/api/deliveries/'+id+'/',{headers:{'Accept':'application/json'}})).json();
       const f=document.getElementById('edit'); document.getElementById('dlg').showModal();
@@ -93,12 +130,25 @@
       f.hours_worked.value=r.hours_worked??''; f.start_time.value=r.start_time??''; f.end_time.value=r.end_time??'';
       document.getElementById('btn-save').onclick=async(ev)=>{
         ev.preventDefault();
-        const body={date:f.date.value,orders_completed:+(f.orders_completed.value||0),earnings:f.earnings.value,hours_worked:f.hours_worked.value||null,start_time:f.start_time.value||null,end_time:f.end_time.value||null};
-        const res2=await fetch('/api/deliveries/'+f.id.value+'/',{method:'PUT',headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')||''},body:JSON.stringify(body)});
-        if(!res2.ok){alert('更新に失敗');return;} document.getElementById('dlg').close(); load();
+        const body={
+          date:f.date.value,
+          orders_completed:+(f.orders_completed.value||0),
+          earnings:f.earnings.value,
+          hours_worked:f.hours_worked.value||null,
+          start_time:f.start_time.value||null,
+          end_time:f.end_time.value||null
+        };
+        const res2=await fetch('/api/deliveries/'+f.id.value+'/',{
+          method:'PUT',
+          headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')||''},
+          body:JSON.stringify(body)
+        });
+        if(!res2.ok){alert('更新に失敗しました');return;}
+        document.getElementById('dlg').close(); load();
       };
     }
   });
+
   load();
 </script>
 {% endblock %}

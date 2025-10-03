@@ -20,6 +20,9 @@ class DeliveryRecord(models.Model):
     earnings = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     hours_worked = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    start_time = models.TimeField(null=True, blank=True)  # その日の開始時刻（任意）
+    end_time   = models.TimeField(null=True, blank=True)  # その日の終了時刻（任意）
+
 
     class Meta:
         unique_together = ("user", "date")

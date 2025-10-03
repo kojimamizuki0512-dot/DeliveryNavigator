@@ -1,114 +1,58 @@
-{% load static %}
-<!DOCTYPE html>
-<html lang="ja" class="h-full">
+<!doctype html>
+<html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>{% block title %}Delivery Navigator{% endblock %}</title>
-  <meta name="description" content="{% block meta_description %}配達実績の記録・可視化・OCR取り込みができる『Delivery Navigator』。{% endblock %}">
-
-  <!-- OGP/Twitter（必要なら） -->
-  <meta property="og:title" content="{% block og_title %}{% block title %}Delivery Navigator{% endblock %}{% endblock %}">
-  <meta property="og:description" content="{% block og_description %}{% block meta_description %}配達実績の記録・可視化・OCR取り込みができる『Delivery Navigator』。{% endblock %}{% endblock %}">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}">
-  <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'og/ogp.jpg' %}">
-  <meta name="twitter:card" content="summary_large_image">
-
-  <!-- Google Fonts（日本語きれいめ） -->
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
-
-  <!-- Tailwind（CDN：まずはこれでOK。後でビルド方式に切替可） -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: { sans: ['"Noto Sans JP"', 'ui-sans-serif', 'system-ui'] },
-          colors: { brand: { 500: '#38bdf8' } },
-          boxShadow: { glass: '0 8px 24px rgba(0,0,0,.25)' },
-          backdropBlur: { xs: '2px' }
-        }
-      }
-    }
-  </script>
-
-  <script>
-    // ダーク/ライトを保存
-    (function(){
-      const saved = localStorage.getItem('theme');
-      if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    })();
-  </script>
+  <style>
+    :root{--bg:#0b162f;--card:#122042;--ink:#e6edf3;--muted:#9fb3c8;--accent:#4cc9f0}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial}
+    a{color:var(--ink);text-decoration:none}
+    .wrap{max-width:1080px;margin:0 auto;padding:16px}
+    .nav{background:#0e1b36;border-bottom:1px solid #1e2a4a}
+    .brand{font-weight:700}
+    .nav ul{display:flex;gap:16px;list-style:none;margin:0;padding:0}
+    .nav a.active{color:var(--accent)}
+    .btn{display:inline-block;padding:.5rem .8rem;border-radius:8px;background:#1c2d57;color:#fff;border:1px solid #2b3d6a;cursor:pointer}
+    .btn:hover{background:#223869}
+    .card{background:var(--card);border:1px solid #1e2a4a;border-radius:12px;padding:16px}
+    .muted{color:var(--muted)}
+    footer{color:var(--muted);padding:24px 0;border-top:1px solid #1e2a4a;margin-top:24px}
+  </style>
 </head>
-
-<body class="h-full bg-slate-950 text-slate-100 selection:bg-brand-500/30">
-  <!-- ナビ -->
-  <header class="sticky top-0 z-40 backdrop-blur bg-slate-900/60 border-b border-slate-800">
-    <div class="max-w-6xl mx-auto px-4">
-      <div class="flex items-center gap-2 py-3">
-        <a href="{% url 'home' %}" class="text-white font-bold tracking-wide text-lg hover:opacity-90 transition">Delivery Navigator</a>
-
-        {% with current=request.resolver_match.url_name %}
-          <nav class="flex gap-1 ml-2">
-            <a href="{% url 'home' %}" class="px-3 py-2 rounded-lg transition
-              {% if current == 'home' %}bg-slate-800 text-white{% else %}hover:bg-slate-800/60 text-slate-300{% endif %}">ホーム</a>
-            <a href="{% url 'dashboard' %}" class="px-3 py-2 rounded-lg transition
-              {% if current == 'dashboard' %}bg-slate-800 text-white{% else %}hover:bg-slate-800/60 text-slate-300{% endif %}">ダッシュボード</a>
-            <a href="{% url 'records' %}" class="px-3 py-2 rounded-lg transition
-              {% if current == 'records' %}bg-slate-800 text-white{% else %}hover:bg-slate-800/60 text-slate-300{% endif %}">実績一覧</a>
-            <a href="{% url 'map' %}" class="px-3 py-2 rounded-lg transition
-              {% if current == 'map' %}bg-slate-800 text-white{% else %}hover:bg-slate-800/60 text-slate-300{% endif %}">AIマップ</a>
-            <a href="{% url 'upload' %}" class="px-3 py-2 rounded-lg transition
-              {% if current == 'upload' %}bg-slate-800 text-white{% else %}hover:bg-slate-800/60 text-slate-300{% endif %}">データ取込</a>
-          </nav>
-
-          <div class="ml-auto flex items-center gap-2">
-            <button id="themeToggle" class="px-3 py-2 rounded-lg hover:bg-slate-800/60 text-slate-300 transition" title="テーマ切替">🌓</button>
-            {% if request.user.is_authenticated %}
-              <span class="hidden sm:inline text-slate-300">こんにちは、{{ request.user.username }}さん</span>
-              <a href="{% url 'logout' %}" class="px-3 py-2 rounded-lg bg-brand-500/20 text-brand-500 hover:bg-brand-500/30 transition">ログアウト</a>
-            {% else %}
-              <a href="{% url 'login' %}"  class="px-3 py-2 rounded-lg hover:bg-slate-800/60 text-slate-300 transition">ログイン</a>
-              <a href="{% url 'signup' %}" class="px-3 py-2 rounded-lg bg-brand-500 text-slate-900 hover:opacity-90 transition">新規登録</a>
-            {% endif %}
-          </div>
-        {% endwith %}
+<body>
+  <nav class="nav">
+    <div class="wrap" style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+      <a class="brand" href="{% url 'home' %}">Delivery Navigator</a>
+      <ul>
+        <li><a href="{% url 'home' %}" class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">ホーム</a></li>
+        <li><a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">ダッシュボード</a></li>
+        <li><a href="{% url 'map' %}" class="{% if request.resolver_match.url_name == 'map' %}active{% endif %}">AIマップ</a></li>
+        <li><a href="/records" class="{% if request.path|slice:':8' == '/records' %}active{% endif %}">データ</a></li>
+        <li><a href="/upload"  class="{% if request.path|slice:':7' == '/upload' %}active{% endif %}">取込</a></li>
+      </ul>
+      <div>
+        {% if request.user.is_authenticated %}
+          <span class="muted">こんにちは、{{ request.user.username }}さん</span>
+          <a class="btn" href="{% url 'logout' %}">ログアウト</a>
+        {% else %}
+          <a class="btn" href="{% url 'login' %}">ログイン</a>
+          <a class="btn" href="{% url 'signup' %}" style="margin-left:8px">新規登録</a>
+        {% endif %}
       </div>
     </div>
-  </header>
+  </nav>
 
-  <!-- コンテンツ -->
-  <main class="max-w-6xl mx-auto px-4 py-6">
+  <main class="wrap">
+    <!-- ページ見出し用。必要なページだけで上書きしてOK -->
+    {% block header %}{% endblock %}
+
     {% block content %}{% endblock %}
   </main>
 
-  <!-- ホーム以外 → 右下にホームFAB -->
-  {% with current=request.resolver_match.url_name %}
-    {% if current != 'home' %}
-      <a href="{% url 'home' %}" aria-label="ホームへ" title="ホームへ"
-         class="fixed bottom-5 right-5 rounded-full bg-slate-800/80 backdrop-blur-xs border border-slate-700 shadow-glass
-                w-12 h-12 grid place-items-center hover:scale-105 hover:bg-slate-700/80 transition">🏠</a>
-    {% endif %}
-  {% endwith %}
-
-  <footer class="border-t border-slate-800/80">
-    <div class="max-w-6xl mx-auto px-4 py-6 text-slate-400">© {{ now|default:None|date:"Y" }} Delivery Navigator</div>
+  <footer>
+    <div class="wrap muted">© {{ now|date:"Y" }} Delivery Navigator</div>
   </footer>
-
-  <script>
-    document.getElementById('themeToggle')?.addEventListener('click', () => {
-      const html = document.documentElement;
-      const toDark = !html.classList.contains('dark');
-      html.classList.toggle('dark', toDark);
-      localStorage.setItem('theme', toDark ? 'dark' : 'light');
-    });
-  </script>
 </body>
 </html>

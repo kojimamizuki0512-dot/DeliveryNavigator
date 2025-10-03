@@ -26,4 +26,13 @@ if [ -n "${RUN_MANAGE_CMD:-}" ]; then
 fi
 
 # ----- 起動 -----
-exec gunicorn config.wsgi:application --bind "0.0.0.0:${PORT}" --workers 2
+exec gunicorn config.wsgi:application \
+  --bind 0.0.0.0:${PORT:-8000} \
+  --workers ${WEB_CONCURRENCY:-2} \
+  --threads ${WEB_THREADS:-4} \
+  --timeout ${WEB_TIMEOUT:-60} \
+  --graceful-timeout 30 \
+  --access-logfile - \
+  --error-logfile - \
+  --log-level ${GUNICORN_LOG_LEVEL:-info}
+

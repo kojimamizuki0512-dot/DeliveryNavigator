@@ -29,6 +29,11 @@
     .btn:hover{background:#14254a}
     dialog{border:1px solid #203055;border-radius:12px;background:#0f1a33;color:#e6edf3}
     input,select{background:#0b162f;border:1px solid #203055;border-radius:8px;color:#e6edf3;padding:6px 8px}
+    /* フローティング ホームボタン */
+    .fab{position:fixed;right:18px;bottom:18px;width:54px;height:54px;border-radius:50%;
+         display:flex;align-items:center;justify-content:center;text-decoration:none;
+         border:1px solid #203055;background:#0f1a33;color:#e6edf3;font-size:22px;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+    .fab:hover{background:#14254a}
   </style>
 </head>
 <body>
@@ -58,6 +63,12 @@
 <main class="wrap">
   {% block content %}{% endblock %}
 </main>
+
+{% with current=request.resolver_match.url_name %}
+  {% if current != 'home' %}
+    <a class="fab" href="{% url 'home' %}" aria-label="ホームへ戻る" title="ホームへ">🏠</a>
+  {% endif %}
+{% endwith %}
 
 <footer>
   <div class="wrap muted" style="padding:16px">© {{ now|default:None|date:"Y" }} Delivery Navigator</div>

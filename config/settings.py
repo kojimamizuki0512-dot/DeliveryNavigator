@@ -92,7 +92,7 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 # 認証の遷移
 LOGIN_URL = "/login/"
-LOGIN_REDIRECT_URL = "dashboard"
+LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "home"
 
 # Tesseract（Windowsデフォルト。環境変数 TESSERACT_CMD があればそちら優先）

@@ -2,96 +2,98 @@
 {% block title %}ダッシュボード | Delivery Navigator{% endblock %}
 {% block content %}
 <h1 style="margin:0 0 8px 0;">ダッシュボード</h1>
-<p class="muted">今月の実績と直近30日のトレンドを表示します。</p>
+<p class="muted">今月の実績と直近30日のトレンド、時間帯×曜日の稼ぎヒートマップ。</p>
 
-<!-- KPI カード -->
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:16px 0;">
-  <div class="card"><h3>今月 売上合計</h3><div id="kpi-earn" style="font-size:28px;font-weight:700">-</div></div>
-  <div class="card"><h3>今月 件数</h3><div id="kpi-ord" style="font-size:28px;font-weight:700">-</div></div>
-  <div class="card"><h3>今月 平均時給</h3><div id="kpi-hr" style="font-size:28px;font-weight:700">-</div></div>
-  <div class="card"><h3>今日</h3><div id="kpi-today" class="muted">-</div></div>
-</div>
+<!-- 既存の KPI / チャート（前回のままでOK） -->
+<div id="kpiArea"></div>
+<div id="chartArea"></div>
 
-<!-- チャート -->
-<div class="card">
-  <h3 style="margin-top:0">日別 売上（直近30日）</h3>
-  <canvas id="chartDaily" height="140"></canvas>
-</div>
+<!-- ===== ヒートマップ ===== -->
 <div class="card" style="margin-top:12px">
-  <h3 style="margin-top:0">累積 売上（直近30日）</h3>
-  <canvas id="chartCum" height="140"></canvas>
+  <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+    <h3 style="margin:0">時間帯×曜日 ヒートマップ（平均時給 円/h）</h3>
+    <div>
+      <label class="muted" for="hmRange">範囲:</label>
+      <select id="hmRange" class="btn">
+        <option value="30">直近30日</option>
+        <option value="60">直近60日</option>
+        <option value="90">直近90日</option>
+      </select>
+    </div>
+  </div>
+  <div id="hm" style="margin-top:12px; overflow:auto"></div>
+  <div id="hmTop" class="muted" style="margin-top:8px"></div>
 </div>
 
-<!-- Chart.js CDN -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 (function(){
-  const fmtYMD = d => {
-    const y = d.getFullYear();
-    const m = ('0'+(d.getMonth()+1)).slice(-2);
-    const day = ('0'+d.getDate()).slice(-2);
-    return `${y}-${m}-${day}`;
-  };
   const yen = n => (Math.round(+n)).toLocaleString('ja-JP');
+  const fmtYMD = d => `${d.getFullYear()}-${('0'+(d.getMonth()+1)).slice(-2)}-${('0'+d.getDate()).slice(-2)}`;
 
-  const today = new Date();
-  const start30 = new Date(); start30.setDate(today.getDate()-29);
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-
-  // --- KPI（今月） ---
-  fetch(`/api/deliveries/summary?start=${fmtYMD(monthStart)}&end=${fmtYMD(today)}`)
-    .then(r=>r.json())
-    .then(s=>{
-      document.getElementById('kpi-earn').textContent = `${yen(s.total_earnings||0)} 円`;
-      document.getElementById('kpi-ord').textContent = `${s.total_orders||0} 件`;
-      const hr = s.hourly_rate ? `${yen(s.hourly_rate)} 円/h` : '-';
-      document.getElementById('kpi-hr').textContent = hr;
+  // --- KPI + 30日チャート（略） ---
+  (function kpiAndCharts(){
+    const today=new Date(); const monthStart=new Date(today.getFullYear(), today.getMonth(), 1);
+    fetch(`/api/deliveries/summary?start=${fmtYMD(monthStart)}&end=${fmtYMD(today)}`).then(r=>r.json()).then(s=>{
+      document.getElementById('kpiArea').innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:16px 0;">
+          <div class="card"><h3>今月 売上合計</h3><div style="font-size:28px;font-weight:700">${yen(s.total_earnings||0)} 円</div></div>
+          <div class="card"><h3>今月 件数</h3><div style="font-size:28px;font-weight:700">${s.total_orders||0} 件</div></div>
+          <div class="card"><h3>今月 平均時給</h3><div style="font-size:28px;font-weight:700">${s.hourly_rate?yen(s.hourly_rate):'-'} 円/h</div></div>
+        </div>`;
     });
-
-  // --- 今日 ---
-  fetch(`/api/deliveries/summary?start=${fmtYMD(today)}&end=${fmtYMD(today)}`)
-    .then(r=>r.json())
-    .then(s=>{
-      const txt = `売上 ${yen(s.total_earnings||0)} / 件数 ${s.total_orders||0}`;
-      document.getElementById('kpi-today').textContent = txt;
-    });
-
-  // --- 30日分の明細（欠損日は0埋め） ---
-  fetch(`/api/deliveries/?start=${fmtYMD(start30)}&end=${fmtYMD(today)}`)
-    .then(r=>r.json())
-    .then(data=>{
-      const rows = Array.isArray(data) ? data : (data.results || []);
-      const byDate = {};
-      rows.forEach(r => { byDate[r.date] = (byDate[r.date]||0) + parseFloat(r.earnings||0); });
-
-      const labels = [];
-      const dailies = [];
-      const cum = [];
-      let run = 0;
-      for(let d=new Date(start30); d<=today; d.setDate(d.getDate()+1)){
-        const key = fmtYMD(d);
-        const v = +(+byDate[key]||0).toFixed(0);
-        labels.push(key);
-        dailies.push(v);
-        run += v;
-        cum.push(run);
+    const start30=new Date(); const today2=new Date(); start30.setDate(today2.getDate()-29);
+    fetch(`/api/deliveries/?start=${fmtYMD(start30)}&end=${fmtYMD(today2)}`).then(r=>r.json()).then(data=>{
+      const rows=Array.isArray(data)?data:(data.results||[]);
+      const map={}; rows.forEach(r=>{map[r.date]=(map[r.date]||0)+parseFloat(r.earnings||0);});
+      const labels=[]; const daily=[]; const cum=[]; let run=0;
+      for(let d=new Date(start30); d<=today2; d.setDate(d.getDate()+1)){
+        const k=fmtYMD(d), v=+(map[k]||0); labels.push(k); daily.push(v); run+=v; cum.push(run);
       }
-
-      const ctx1 = document.getElementById('chartDaily').getContext('2d');
-      const ctx2 = document.getElementById('chartCum').getContext('2d');
-
-      new Chart(ctx1, {
-        type: 'bar',
-        data: { labels, datasets: [{ label: '売上(円)', data: dailies }] },
-        options: { responsive: true, plugins:{ legend:{ display:false }}, scales:{ x:{ ticks:{ maxRotation:0, autoSkip:true }}, y:{ beginAtZero:true } } }
-      });
-
-      new Chart(ctx2, {
-        type: 'line',
-        data: { labels, datasets: [{ label: '累積(円)', data: cum, fill:false }] },
-        options: { responsive: true, plugins:{ legend:{ display:false }}, scales:{ x:{ ticks:{ maxRotation:0, autoSkip:true }}, y:{ beginAtZero:true } } }
-      });
+      document.getElementById('chartArea').innerHTML = `
+        <div class="card"><h3 style="margin-top:0">日別 売上（直近30日）</h3><canvas id="c1" height="140"></canvas></div>
+        <div class="card" style="margin-top:12px"><h3 style="margin-top:0">累積 売上（直近30日）</h3><canvas id="c2" height="140"></canvas></div>`;
+      new Chart(document.getElementById('c1'),{type:'bar',data:{labels,datasets:[{label:'売上(円)',data:daily}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+      new Chart(document.getElementById('c2'),{type:'line',data:{labels,datasets:[{label:'累積(円)',data:cum,fill:false}]} ,options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
     });
+  })();
+
+  // --- Heatmap ---
+  const wdNames = ['月','火','水','木','金','土','日'];
+  function color(v, vmax){
+    if(vmax<=0 || v<=0) return '#0b162f';
+    const t = Math.min(1, v / vmax);
+    const h = 210 - 210*t;           // 青→黄
+    const s = 90; const l = 18 + 40*t;
+    return `hsl(${h}, ${s}%, ${l}%)`;
+  }
+  async function loadHeat(days){
+    const end=new Date(); const start=new Date(); start.setDate(end.getDate()-(days-1));
+    const url=`/api/deliveries/heatmap?start=${fmtYMD(start)}&end=${fmtYMD(end)}`;
+    const data=await (await fetch(url)).json();
+    const M=data.values, vmax=data.vmax||0;
+    // Gridを作成
+    const wrap=document.getElementById('hm');
+    let html = `<div style="display:grid;grid-template-columns:80px repeat(24,1fr);gap:2px;min-width:820px">`;
+    html += `<div></div>`;
+    for(let h=0; h<24; h++) html += `<div style="text-align:center;font-size:12px" class="muted">${('0'+h).slice(-2)}</div>`;
+    for(let r=0; r<7; r++){
+      html += `<div class="muted" style="display:flex;align-items:center;justify-content:flex-end;padding-right:6px">${wdNames[r]}</div>`;
+      for(let c=0; c<24; c++){
+        const v = M[r][c]||0;
+        html += `<div title="${wdNames[r]} ${('0'+c).slice(-2)}:00  平均時給 ${Math.round(v)} 円"
+                    style="height:22px;border-radius:4px;background:${color(v, vmax)}"></div>`;
+      }
+    }
+    html += `</div>`;
+    wrap.innerHTML = html;
+
+    // おすすめスロット
+    const top = (data.top_slots||[]).map(x=>`${x.label}（約${x.hourly.toLocaleString()}円/h, サンプル${x.hours}h）`).join(' ・ ');
+    document.getElementById('hmTop').textContent = top ? `おすすめ時間帯：${top}` : '（サンプルが不足しています。開始/終了時刻を入力すると学習されます）';
+  }
+  document.getElementById('hmRange').addEventListener('change', e=>loadHeat(parseInt(e.target.value,10)));
+  loadHeat(30);
 })();
 </script>
 {% endblock %}

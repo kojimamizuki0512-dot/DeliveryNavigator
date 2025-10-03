@@ -1,3 +1,4 @@
+# core/views.py
 import io
 import re
 import csv
@@ -9,9 +10,13 @@ from django.http import HttpResponse, JsonResponse
 from django.utils.dateparse import parse_date
 from django.core.files.base import ContentFile
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.views.generic import TemplateView
+from django.views.generic import TemplateView, FormView
+from django.urls import reverse_lazy
+from django.contrib.auth import get_user_model, login as auth_login
+from django.contrib.auth.forms import UserCreationForm
+from django import forms
 
-from rest_framework import viewsets, permissions, generics
+from rest_framework import viewsets, permissions, generics, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -58,7 +63,7 @@ def _ensure_tesseract_path():
 def _ocr_image_to_text(image_bytes: bytes) -> str:
     _ensure_tesseract_path()
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    cfg = "--psm 6"  # 1 段落ブロック向け
+    cfg = "--psm 6"
     try:
         return pytesseract.image_to_string(img, lang="jpn+eng", config=cfg)
     except Exception:
@@ -68,10 +73,6 @@ def _ocr_image_to_text(image_bytes: bytes) -> str:
 def _parse_numbers(text: str):
     """
     OCR文字列から ゆるく数値を拾う（無ければ None）
-    - 日付: YYYY[-./]MM[-./]DD
-    - 件数: 「◯件」/「Orders: 12」/「Deliveries: 12」
-    - 売上: 円/¥/JPY 付きや「Earnings: 5600 JPY」
-    - 時間: 「3.5 h」/「3.5時間」
     """
     norm = text.replace("：", ":").replace("　", " ")
 
@@ -152,11 +153,7 @@ def _to_decimal_or_none(val):
 
 
 def _repair_decimal_columns():
-    """
-    既存データの『不正な文字列』を安全な値に修復する。
-    - earnings: NOT NULL のため '0' に置換
-    - hours_worked: NULL 許可のため NULL に置換
-    """
+    """既存データの不正値を安全に修復する。"""
     try:
         with connection.cursor() as cur:
             cur.execute(
@@ -259,19 +256,40 @@ class MeView(generics.RetrieveUpdateAPIView):
 
 # ---------- 画面（ユーザー向け） ----------
 
-class HomeView(TemplateView):
-    """トップページ（共通ナビの起点）"""
-    template_name = "home.html"
-
-
 class DashboardView(LoginRequiredMixin, TemplateView):
-    login_url = '/admin/login/'
+    login_url = '/login/'   # 一般ユーザーのログイン画面へ
     template_name = 'dashboard.html'
 
 
 class MapView(LoginRequiredMixin, TemplateView):
-    login_url = '/admin/login/'
+    login_url = '/login/'
     template_name = 'map.html'
+
+
+class UploadView(LoginRequiredMixin, TemplateView):
+    login_url = '/login/'
+    template_name = 'upload.html'
+
+
+# ---------- サインアップ（UI） ----------
+
+class SignUpForm(UserCreationForm):
+    email = forms.EmailField(required=False)
+
+    class Meta(UserCreationForm.Meta):
+        model = get_user_model()
+        fields = ("username", "email")  # password1/password2 は UserCreationForm が持つ
+
+
+class SignUpView(FormView):
+    template_name = "signup.html"
+    form_class = SignUpForm
+    success_url = reverse_lazy("dashboard")
+
+    def form_valid(self, form):
+        user = form.save()
+        auth_login(self.request, user)  # 登録後そのままログイン
+        return super().form_valid(form)
 
 
 # ---------- OCR 取り込み ----------
@@ -279,24 +297,12 @@ class MapView(LoginRequiredMixin, TemplateView):
 class OcrImportView(generics.GenericAPIView):
     """
     POST /api/ocr/import/
-      - image: ファイル必須（スクショ）
-      - date (任意, YYYY-MM-DD) … 読み取り上書き
-      - hours_worked (任意, 数字) … 読み取り上書き（空欄OK）
-    戻り値:
-      {
-        "created": true/false,
-        "updated_fields": [...],
-        "record": {...},
-        "parsed": {...},
-        "raw_text": "..."
-      }
     """
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
     serializer_class = OcrImportInputSerializer
 
     def post(self, request, *args, **kwargs):
-        # まず既存DBの不正値を自動修復
         _repair_decimal_columns()
 
         s = self.get_serializer(data=request.data)
@@ -305,7 +311,6 @@ class OcrImportView(generics.GenericAPIView):
         image = s.validated_data["image"]
         date_override = s.validated_data.get("date")
 
-        # hours_worked は空でも来るので安全に数値化
         hours_raw = s.validated_data.get("hours_worked")
         hours_override = None
         if hours_raw is not None:
@@ -328,7 +333,6 @@ class OcrImportView(generics.GenericAPIView):
 
         date = parsed["date"] or datetime.date.today()
 
-        # 新規作成時の初期値（Noneは保存しない）
         defaults = {}
         if parsed["orders"] is not None:
             defaults["orders_completed"] = int(parsed["orders"])
@@ -339,7 +343,6 @@ class OcrImportView(generics.GenericAPIView):
         if dec is not None:
             defaults["hours_worked"] = dec
 
-        # 既存レコードの安全取得
         existing_id = (
             DeliveryRecord.objects
             .filter(user=request.user, date=date)
@@ -354,12 +357,11 @@ class OcrImportView(generics.GenericAPIView):
         else:
             rec = DeliveryRecord(user=request.user, date=date)
             rec.orders_completed = defaults.get("orders_completed", 0)
-            rec.earnings = defaults.get("earnings", Decimal("0.00"))  # NOT NULL想定
+            rec.earnings = defaults.get("earnings", Decimal("0.00"))
             rec.hours_worked = defaults.get("hours_worked", None)
             rec.save()
             created = True
 
-        # 既存なら「読めた項目だけ」更新
         updated_fields = []
         if not created:
             if parsed["orders"] is not None:
@@ -376,7 +378,6 @@ class OcrImportView(generics.GenericAPIView):
             if updated_fields:
                 rec.save(update_fields=updated_fields)
 
-        # OCRログ
         job = OcrImport(user=request.user, status="success")
         job.image.save(image.name, ContentFile(data))
         job.raw_text = raw_text
@@ -389,7 +390,6 @@ class OcrImportView(generics.GenericAPIView):
         job.created_record = rec
         job.save()
 
-        # 念のため最新を取得
         rec = DeliveryRecord.objects.get(pk=rec.pk)
 
         return Response({
@@ -398,17 +398,4 @@ class OcrImportView(generics.GenericAPIView):
             "record": DeliveryRecordSerializer(rec).data,
             "parsed": job.parsed_json,
             "raw_text": raw_text,
-        }, status=201)
-
-
-# ---------- ヘルスチェック ----------
-
-def healthz(request):
-    return JsonResponse({"status": "ok"})
-
-
-class UploadView(LoginRequiredMixin, TemplateView):
-    login_url = '/admin/login/'
-    template_name = 'upload.html'
-# --- ここまで追加 ---
-
+        }, status=status.HTTP_201_CREATED)

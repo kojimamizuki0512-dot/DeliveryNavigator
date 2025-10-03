@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}ログイン | Delivery Navigator{% endblock %}
+{% block content %}
+<h1 style="margin:0 0 12px 0;">ログイン</h1>
+<form method="post" action="{% url 'login' %}">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  <div style="margin:8px 0">
+    <label>ユーザー名</label><br>
+    {{ form.username }}
+  </div>
+  <div style="margin:8px 0">
+    <label>パスワード</label><br>
+    {{ form.password }}
+  </div>
+  <button type="submit" class="nav">ログイン</button>
+</form>
+<p class="muted" style="margin-top:12px">
+  アカウントがない？ <a class="nav" href="{% url 'signup' %}">新規登録</a>
+</p>
+{% endblock %}

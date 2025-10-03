@@ -7,7 +7,6 @@
   <title>{% block title %}Delivery Navigator{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'base.css' %}">
   <style>
-    /* 最小スタイル（staticにCSSを置けない場合の保険） */
     :root { --bg:#0f172a; --fg:#e2e8f0; --muted:#94a3b8; --link:#38bdf8; }
     body{margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans JP',sans-serif;background:#0b1020;color:#e6edf3}
     header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid #1f2a44;z-index:10}
@@ -28,15 +27,23 @@
 <body>
 <header>
   <div class="wrap">
-    {% with current=request.resolver_match.url_name %}
     <nav>
       <a class="brand" href="{% url 'home' %}">Delivery Navigator</a>
-      <a class="nav {% if current == 'home' %}active{% endif %}" href="{% url 'home' %}">ホーム</a>
-      <a class="nav {% if current == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}">ダッシュボード</a>
-      <a class="nav {% if current == 'map' %}active{% endif %}" href="{% url 'map' %}">AIマップ</a>
-      {# 必要になったらアップロード等も追加：例）<a class="nav {% if current == 'upload' %}active{% endif %}" href="{% url 'upload' %}">データ取込</a> #}
+      {% with current=request.resolver_match.url_name %}
+        <a class="nav {% if current == 'home' %}active{% endif %}" href="{% url 'home' %}">ホーム</a>
+        <a class="nav {% if current == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}">ダッシュボード</a>
+        <a class="nav {% if current == 'map' %}active{% endif %}" href="{% url 'map' %}">AIマップ</a>
+        <a class="nav {% if current == 'upload' %}active{% endif %}" href="{% url 'upload' %}">データ取込</a>
+        <span style="flex:1"></span>
+        {% if request.user.is_authenticated %}
+          <span class="muted">こんにちは、{{ request.user.username }}さん</span>
+          <a class="nav" href="{% url 'logout' %}">ログアウト</a>
+        {% else %}
+          <a class="nav {% if current == 'login' %}active{% endif %}" href="{% url 'login' %}">ログイン</a>
+          <a class="nav {% if current == 'signup' %}active{% endif %}" href="{% url 'signup' %}">新規登録</a>
+        {% endif %}
+      {% endwith %}
     </nav>
-    {% endwith %}
   </div>
 </header>
 

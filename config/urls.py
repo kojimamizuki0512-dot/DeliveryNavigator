@@ -1,26 +1,35 @@
+# config/urls.py
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
-# Home/healthz は config.views
+# Home と healthz は config.views
 from . import views
-# ダッシュボード/マップ/アップロードは core 側
-from core.views import DashboardView, MapView, UploadView
+# 画面（ダッシュボード/マップ/サインアップ/アップロード）は core 側
+from core.views import DashboardView, MapView, SignUpView, UploadView
+
+# Django標準 ログイン/ログアウト
+from django.contrib.auth import views as auth_views
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path("admin/", admin.site.urls),
 
     # API
-    path('api/', include('core.urls')),
+    path("api/", include("core.urls")),
+
+    # 認証（ユーザー用UI）
+    path("signup/", SignUpView.as_view(), name="signup"),
+    path("login/",  auth_views.LoginView.as_view(template_name="login.html"), name="login"),
+    path("logout/", auth_views.LogoutView.as_view(next_page="home"), name="logout"),
 
     # ユーザー向け画面
-    path('', views.HomeView.as_view(), name='home'),
-    path('dashboard/', DashboardView.as_view(), name='dashboard'),
-    path('map/', MapView.as_view(), name='map'),
-    path('upload/', UploadView.as_view(), name='upload'),   # ★ 追加
+    path("", views.HomeView.as_view(), name="home"),
+    path("dashboard/", DashboardView.as_view(), name="dashboard"),
+    path("map/", MapView.as_view(), name="map"),
+    path("upload/", UploadView.as_view(), name="upload"),
 
-    path('healthz', views.healthz),
+    path("healthz", views.healthz),
 ]
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

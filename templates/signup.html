@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}新規登録 | Delivery Navigator{% endblock %}
+{% block content %}
+<h1 style="margin:0 0 12px 0;">新規登録</h1>
+<form method="post" action="{% url 'signup' %}">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+
+  <div style="margin:8px 0">
+    <label>ユーザー名</label><br>
+    {{ form.username }}
+    {{ form.username.errors }}
+  </div>
+
+  <div style="margin:8px 0">
+    <label>メール（任意）</label><br>
+    {{ form.email }}
+    {{ form.email.errors }}
+  </div>
+
+  <div style="margin:8px 0">
+    <label>パスワード</label><br>
+    {{ form.password1 }}
+    {{ form.password1.errors }}
+  </div>
+
+  <div style="margin:8px 0">
+    <label>パスワード（確認）</label><br>
+    {{ form.password2 }}
+    {{ form.password2.errors }}
+  </div>
+
+  <button type="submit" class="nav">登録する</button>
+</form>
+
+<p class="muted" style="margin-top:12px">
+  すでにアカウントがある？ <a class="nav" href="{% url 'login' %}">ログイン</a>
+</p>
+{% endblock %}

@@ -284,7 +284,8 @@ class SignUpForm(UserCreationForm):
 class SignUpView(FormView):
     template_name = "signup.html"
     form_class = SignUpForm
-    success_url = reverse_lazy("dashboard")
+    # ★ 登録後はトップへ
+    success_url = reverse_lazy("home")
 
     def form_valid(self, form):
         user = form.save()

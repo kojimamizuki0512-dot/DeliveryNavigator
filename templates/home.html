@@ -1,61 +1,57 @@
 {% extends "base.html" %}
 {% load static %}
 {% block title %}ホーム | Delivery Navigator{% endblock %}
-{% block meta_description %}配達実績の記録・可視化・OCR取り込み。ホームから各機能に移動できます。{% endblock %}
 
 {% block content %}
 
-<!-- ===== Hero（上部に大きく画像） ===== -->
-<section class="hero">
-  <img src="{% static 'img/home-hero.png' %}" alt="港湾エリアの夜景（サンプル）">
-  <div class="hero-overlay">
-    <h1>ようこそ</h1>
-    <p>ここから主要機能へ移動できます。</p>
+<!-- Hero -->
+<section class="relative overflow-hidden rounded-2xl border border-slate-800 shadow-glass">
+  <img src="{% static 'img/home-hero.png' %}" alt="Hero" class="w-full h-[360px] object-cover transition
+             scale-100 hover:scale-[1.02] duration-700">
+  <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-900/20 to-transparent"></div>
+  <div class="absolute inset-x-0 bottom-0 p-6 sm:p-8">
+    <h1 class="text-2xl sm:text-3xl font-bold">ようこそ</h1>
+    <p class="text-slate-300 mt-1">ここから主要機能へ移動できます。</p>
+    <div class="mt-4 flex gap-3">
+      <a href="{% url 'dashboard' %}" class="px-4 py-2 rounded-lg bg-brand-500 text-slate-900 font-semibold hover:opacity-90 transition">ダッシュボードを見る</a>
+      <a href="{% url 'upload' %}" class="px-4 py-2 rounded-lg bg-slate-800/80 border border-slate-700 hover:bg-slate-700/80 transition">データを取り込む</a>
+    </div>
   </div>
 </section>
 
-<!-- ===== 主要カード ===== -->
-<div class="grid" style="margin-top:16px">
-  <a class="card link" href="{% url 'dashboard' %}">
-    <h3>ダッシュボード →</h3>
-    <div class="muted">直近の実績と指標を確認</div>
+<!-- Cards -->
+<section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+  <a href="{% url 'dashboard' %}" class="group rounded-2xl border border-slate-800 bg-slate-900/50 p-5 hover:bg-slate-900 transition">
+    <div class="flex items-center justify-between">
+      <h3 class="text-lg font-semibold">ダッシュボード</h3>
+      <span class="text-slate-400 group-hover:translate-x-1 transition">→</span>
+    </div>
+    <p class="text-slate-400 mt-1">直近の実績と指標を確認</p>
   </a>
 
-  <a class="card link" href="{% url 'map' %}">
-    <h3>AIマップ →</h3>
-    <div class="muted">ヒートマップで稼ぎどころを可視化</div>
+  <a href="{% url 'map' %}" class="group rounded-2xl border border-slate-800 bg-slate-900/50 p-5 hover:bg-slate-900 transition">
+    <div class="flex items-center justify-between">
+      <h3 class="text-lg font-semibold">AIマップ</h3>
+      <span class="text-slate-400 group-hover:translate-x-1 transition">→</span>
+    </div>
+    <p class="text-slate-400 mt-1">ヒートマップで稼ぎどころを可視化</p>
   </a>
 
-  <a class="card link" href="{% url 'upload' %}">
-    <h3>データ取込（OCR） →</h3>
-    <div class="muted">スクショやCSVから実績登録</div>
+  <a href="{% url 'upload' %}" class="group rounded-2xl border border-slate-800 bg-slate-900/50 p-5 hover:bg-slate-900 transition">
+    <div class="flex items-center justify-between">
+      <h3 class="text-lg font-semibold">データ取込（OCR）</h3>
+      <span class="text-slate-400 group-hover:translate-x-1 transition">→</span>
+    </div>
+    <p class="text-slate-400 mt-1">スクショやCSVから実績登録</p>
   </a>
 
-  <a class="card link" href="{% url 'records' %}">
-    <h3>実績一覧 →</h3>
-    <div class="muted">期間絞り込み・編集・削除・CSV出力</div>
+  <a href="{% url 'records' %}" class="group rounded-2xl border border-slate-800 bg-slate-900/50 p-5 hover:bg-slate-900 transition">
+    <div class="flex items-center justify-between">
+      <h3 class="text-lg font-semibold">実績一覧</h3>
+      <span class="text-slate-400 group-hover:translate-x-1 transition">→</span>
+    </div>
+    <p class="text-slate-400 mt-1">期間絞り込み・編集・削除・CSV出力</p>
   </a>
-</div>
-
-<style>
-  /* ---- Home専用の軽いスタイル ---- */
-  .hero{
-    position:relative;overflow:hidden;border-radius:16px;
-    border:1px solid #203055; background:#0f1a33;
-  }
-  .hero img{
-    display:block; width:100%; height:320px; object-fit:cover;
-    filter:saturate(1.05) contrast(1.05);
-  }
-  .hero-overlay{
-    position:absolute; inset:0; display:flex; flex-direction:column;
-    justify-content:flex-end; padding:18px 20px;
-    background:linear-gradient(180deg, rgba(11,16,32,0) 30%, rgba(11,16,32,.55) 70%, rgba(11,16,32,.85) 100%);
-  }
-  .hero-overlay h1{ margin:0 0 4px 0; font-size:28px; }
-  .hero-overlay p{ margin:0; color:#9fb1cc; }
-  .card.link{ text-decoration:none; color:inherit; transition:transform .08s ease, background .16s ease; }
-  .card.link:hover{ transform:translateY(-1px); background:#122047; }
-</style>
+</section>
 
 {% endblock %}

@@ -1,77 +1,114 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" class="h-full">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
   <title>{% block title %}Delivery Navigator{% endblock %}</title>
-  <link rel="stylesheet" href="{% static 'base.css' %}">
-  <style>
-    :root { --bg:#0f172a; --fg:#e2e8f0; --muted:#94a3b8; --link:#38bdf8; }
-    body{margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans JP',sans-serif;background:#0b1020;color:#e6edf3}
-    header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid #1f2a44;z-index:10}
-    .wrap{max-width:1100px;margin:0 auto;padding:12px 16px}
-    nav{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-    a.brand{font-weight:700;letter-spacing:.3px;margin-right:12px;color:#fff;text-decoration:none}
-    a.nav{color:var(--fg);text-decoration:none;padding:8px 10px;border-radius:8px}
-    a.nav:hover{background:#111b33}
-    a.nav.active{background:#1b2a4a}
-    main{max-width:1100px;margin:0 auto;padding:24px 16px}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:16px}
-    .card{background:#0f1a33;border:1px solid #203055;border-radius:14px;padding:16px}
-    .card h3{margin:0 0 6px 0}
-    .muted{color:#9fb1cc}
-    footer{border-top:1px solid #1f2a44;margin-top:24px}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:8px 10px;border-bottom:1px solid #203055;text-align:left}
-    th{color:#c7d4ea}
-    .btn{padding:6px 10px;border:1px solid #203055;border-radius:8px;background:#0f1a33;color:#e6edf3;text-decoration:none;cursor:pointer}
-    .btn:hover{background:#14254a}
-    dialog{border:1px solid #203055;border-radius:12px;background:#0f1a33;color:#e6edf3}
-    input,select{background:#0b162f;border:1px solid #203055;border-radius:8px;color:#e6edf3;padding:6px 8px}
-    /* フローティング ホームボタン */
-    .fab{position:fixed;right:18px;bottom:18px;width:54px;height:54px;border-radius:50%;
-         display:flex;align-items:center;justify-content:center;text-decoration:none;
-         border:1px solid #203055;background:#0f1a33;color:#e6edf3;font-size:22px;box-shadow:0 6px 18px rgba(0,0,0,.35)}
-    .fab:hover{background:#14254a}
-  </style>
+  <meta name="description" content="{% block meta_description %}配達実績の記録・可視化・OCR取り込みができる『Delivery Navigator』。{% endblock %}">
+
+  <!-- OGP/Twitter（必要なら） -->
+  <meta property="og:title" content="{% block og_title %}{% block title %}Delivery Navigator{% endblock %}{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}{% block meta_description %}配達実績の記録・可視化・OCR取り込みができる『Delivery Navigator』。{% endblock %}{% endblock %}">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}">
+  <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'og/ogp.jpg' %}">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!-- Google Fonts（日本語きれいめ） -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind（CDN：まずはこれでOK。後でビルド方式に切替可） -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['"Noto Sans JP"', 'ui-sans-serif', 'system-ui'] },
+          colors: { brand: { 500: '#38bdf8' } },
+          boxShadow: { glass: '0 8px 24px rgba(0,0,0,.25)' },
+          backdropBlur: { xs: '2px' }
+        }
+      }
+    }
+  </script>
+
+  <script>
+    // ダーク/ライトを保存
+    (function(){
+      const saved = localStorage.getItem('theme');
+      if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    })();
+  </script>
 </head>
-<body>
-<header>
-  <div class="wrap">
-    <nav>
-      <a class="brand" href="{% url 'home' %}">Delivery Navigator</a>
-      {% with current=request.resolver_match.url_name %}
-        <a class="nav {% if current == 'home' %}active{% endif %}" href="{% url 'home' %}">ホーム</a>
-        <a class="nav {% if current == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}">ダッシュボード</a>
-        <a class="nav {% if current == 'records' %}active{% endif %}" href="{% url 'records' %}">実績一覧</a>
-        <a class="nav {% if current == 'map' %}active{% endif %}" href="{% url 'map' %}">AIマップ</a>
-        <a class="nav {% if current == 'upload' %}active{% endif %}" href="{% url 'upload' %}">データ取込</a>
-        <span style="flex:1"></span>
-        {% if request.user.is_authenticated %}
-          <span class="muted">こんにちは、{{ request.user.username }}さん</span>
-          <a class="nav" href="{% url 'logout' %}">ログアウト</a>
-        {% else %}
-          <a class="nav {% if current == 'login' %}active{% endif %}" href="{% url 'login' %}">ログイン</a>
-          <a class="nav {% if current == 'signup' %}active{% endif %}" href="{% url 'signup' %}">新規登録</a>
-        {% endif %}
-      {% endwith %}
-    </nav>
-  </div>
-</header>
 
-<main class="wrap">
-  {% block content %}{% endblock %}
-</main>
+<body class="h-full bg-slate-950 text-slate-100 selection:bg-brand-500/30">
+  <!-- ナビ -->
+  <header class="sticky top-0 z-40 backdrop-blur bg-slate-900/60 border-b border-slate-800">
+    <div class="max-w-6xl mx-auto px-4">
+      <div class="flex items-center gap-2 py-3">
+        <a href="{% url 'home' %}" class="text-white font-bold tracking-wide text-lg hover:opacity-90 transition">Delivery Navigator</a>
 
-{% with current=request.resolver_match.url_name %}
-  {% if current != 'home' %}
-    <a class="fab" href="{% url 'home' %}" aria-label="ホームへ戻る" title="ホームへ">🏠</a>
-  {% endif %}
-{% endwith %}
+        {% with current=request.resolver_match.url_name %}
+          <nav class="flex gap-1 ml-2">
+            <a href="{% url 'home' %}" class="px-3 py-2 rounded-lg transition
+              {% if current == 'home' %}bg-slate-800 text-white{% else %}hover:bg-slate-800/60 text-slate-300{% endif %}">ホーム</a>
+            <a href="{% url 'dashboard' %}" class="px-3 py-2 rounded-lg transition
+              {% if current == 'dashboard' %}bg-slate-800 text-white{% else %}hover:bg-slate-800/60 text-slate-300{% endif %}">ダッシュボード</a>
+            <a href="{% url 'records' %}" class="px-3 py-2 rounded-lg transition
+              {% if current == 'records' %}bg-slate-800 text-white{% else %}hover:bg-slate-800/60 text-slate-300{% endif %}">実績一覧</a>
+            <a href="{% url 'map' %}" class="px-3 py-2 rounded-lg transition
+              {% if current == 'map' %}bg-slate-800 text-white{% else %}hover:bg-slate-800/60 text-slate-300{% endif %}">AIマップ</a>
+            <a href="{% url 'upload' %}" class="px-3 py-2 rounded-lg transition
+              {% if current == 'upload' %}bg-slate-800 text-white{% else %}hover:bg-slate-800/60 text-slate-300{% endif %}">データ取込</a>
+          </nav>
 
-<footer>
-  <div class="wrap muted" style="padding:16px">© {{ now|default:None|date:"Y" }} Delivery Navigator</div>
-</footer>
+          <div class="ml-auto flex items-center gap-2">
+            <button id="themeToggle" class="px-3 py-2 rounded-lg hover:bg-slate-800/60 text-slate-300 transition" title="テーマ切替">🌓</button>
+            {% if request.user.is_authenticated %}
+              <span class="hidden sm:inline text-slate-300">こんにちは、{{ request.user.username }}さん</span>
+              <a href="{% url 'logout' %}" class="px-3 py-2 rounded-lg bg-brand-500/20 text-brand-500 hover:bg-brand-500/30 transition">ログアウト</a>
+            {% else %}
+              <a href="{% url 'login' %}"  class="px-3 py-2 rounded-lg hover:bg-slate-800/60 text-slate-300 transition">ログイン</a>
+              <a href="{% url 'signup' %}" class="px-3 py-2 rounded-lg bg-brand-500 text-slate-900 hover:opacity-90 transition">新規登録</a>
+            {% endif %}
+          </div>
+        {% endwith %}
+      </div>
+    </div>
+  </header>
+
+  <!-- コンテンツ -->
+  <main class="max-w-6xl mx-auto px-4 py-6">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- ホーム以外 → 右下にホームFAB -->
+  {% with current=request.resolver_match.url_name %}
+    {% if current != 'home' %}
+      <a href="{% url 'home' %}" aria-label="ホームへ" title="ホームへ"
+         class="fixed bottom-5 right-5 rounded-full bg-slate-800/80 backdrop-blur-xs border border-slate-700 shadow-glass
+                w-12 h-12 grid place-items-center hover:scale-105 hover:bg-slate-700/80 transition">🏠</a>
+    {% endif %}
+  {% endwith %}
+
+  <footer class="border-t border-slate-800/80">
+    <div class="max-w-6xl mx-auto px-4 py-6 text-slate-400">© {{ now|default:None|date:"Y" }} Delivery Navigator</div>
+  </footer>
+
+  <script>
+    document.getElementById('themeToggle')?.addEventListener('click', () => {
+      const html = document.documentElement;
+      const toDark = !html.classList.contains('dark');
+      html.classList.toggle('dark', toDark);
+      localStorage.setItem('theme', toDark ? 'dark' : 'light');
+    });
+  </script>
 </body>
 </html>

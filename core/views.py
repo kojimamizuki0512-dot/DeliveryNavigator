@@ -219,16 +219,101 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
         resp = HttpResponse(content_type="text/csv; charset=utf-8")
         resp['Content-Disposition'] = 'attachment; filename="deliveries.csv"'
         w = csv.writer(resp)
-        w.writerow(["date", "orders_completed", "earnings", "hours_worked", "created_at"])
+        w.writerow(["date", "orders_completed", "earnings", "hours_worked", "start_time", "end_time", "created_at"])
         for r in qs.order_by("date"):
             w.writerow([
                 r.date,
                 r.orders_completed,
                 str(r.earnings),
                 "" if r.hours_worked is None else str(r.hours_worked),
+                "" if r.start_time is None else r.start_time.isoformat(),
+                "" if r.end_time   is None else r.end_time.isoformat(),
                 r.created_at.isoformat(),
             ])
         return resp
+
+    @action(detail=False, methods=["get"])
+    def heatmap(self, request):
+        """
+        GET /api/deliveries/heatmap?start=YYYY-MM-DD&end=YYYY-MM-DD
+        返却: 7x24 の行列（weekday=0..6/月..日, hour=0..23）
+          values: その時間帯の平均時給（円/h）
+          counts: 積算した有効時間（h）サンプル量
+          top_slots: 推奨スロット（上位3件）
+        """
+        from math import floor, ceil
+
+        qs = self.get_queryset().only(
+            "date", "earnings", "hours_worked", "start_time", "end_time"
+        )
+
+        # 集計バッファ
+        sum_earn = [[0.0 for _ in range(24)] for _ in range(7)]
+        sum_hours = [[0.0 for _ in range(24)] for _ in range(7)]
+
+        for r in qs:
+            if not r.start_time or not r.end_time or not r.earnings:
+                # 時刻が無いデータはヒートマップには使わない（誤学習防止）
+                continue
+
+            sh = r.start_time.hour + r.start_time.minute / 60.0
+            eh = r.end_time.hour + r.end_time.minute / 60.0
+
+            # 同日内のみ（えいっで丸め）。終了<=開始なら hours_worked で補完
+            if eh <= sh:
+                dur = float(r.hours_worked or 0) or 0.0
+                if dur <= 0:
+                    continue
+                eh = min(24.0, sh + dur)
+
+            dur = max(0.0, eh - sh)
+            if dur <= 0:
+                continue
+
+            wd = r.date.weekday()  # 0=Mon
+            # 時給を時間配分して加算
+            earn = float(r.earnings)
+            for h in range(max(0, floor(sh)), min(24, ceil(eh))):
+                # その時間枠にどれくらい被っているか（0..1）
+                left = max(sh, h)
+                right = min(eh, h + 1)
+                portion = max(0.0, right - left)
+                if portion > 0:
+                    sum_earn[wd][h] += earn * (portion / dur)
+                    sum_hours[wd][h] += portion
+
+        # 平均時給 matrix を作成
+        values = []
+        vmax = 0.0
+        for wd in range(7):
+            row = []
+            for h in range(24):
+                hrs = sum_hours[wd][h]
+                val = (sum_earn[wd][h] / hrs) if hrs > 0 else 0.0
+                row.append(round(val, 2))
+                vmax = max(vmax, val)
+            values.append(row)
+
+        # 推奨スロット（上位3件、サンプル1時間以上）
+        slots = []
+        for wd in range(7):
+            for h in range(24):
+                if sum_hours[wd][h] >= 1.0:  # 1時間以上のサンプル
+                    slots.append((values[wd][h], wd, h, sum_hours[wd][h]))
+        slots.sort(reverse=True, key=lambda x: x[0])
+        name = ["月","火","水","木","金","土","日"]
+        top = []
+        for i, (v, wd, h, hrs) in enumerate(slots[:3]):
+            top.append({"label": f"{name[wd]} {h:02d}:00", "hourly": round(v), "hours": round(hrs,1)})
+
+        return Response({
+            "values": values,
+            "counts": sum_hours,
+            "vmax": round(vmax),
+            "top_slots": top,
+        })
+    
+    
 
 
 class EntranceInfoViewSet(viewsets.ModelViewSet):

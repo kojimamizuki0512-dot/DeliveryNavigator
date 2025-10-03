@@ -1,7 +1,33 @@
-﻿.venv/
+﻿# venv
+.venv/
+venv/
+
+# Python bytecode / cache
 __pycache__/
-*.pyc
-db.sqlite3
+*.py[cod]
+*.pyo
+*.pyd
+
+# Django runtime artifacts
+*.sqlite3
 /media/
-/staticfiles/
+static/
+staticfiles/
+*.log
+
+# Secrets (環境変数ファイル)
+.env
+.env.*
+*.env
+
+# Test / type-check caches
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Editors / OS
 .vscode/
+.idea/
+.DS_Store
+Thumbs.db

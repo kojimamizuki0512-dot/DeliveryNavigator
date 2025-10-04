@@ -3,14 +3,65 @@
 {% block title %}ホーム | Delivery Navigator{% endblock %}
 
 {% block header %}
-<section class="fullbleed hero">
-  <div class="hero-img" style="background-image:url('{% static 'img/home-hero.png' %}');"></div>
+<section class="fullbleed hero hero--fullscreen">
+  <!-- ▼ 斬新な“液体グラデ”SVG（画像ファイル不要／ゆっくり動きます） -->
+  <div class="hero-art" aria-hidden="true">
+    <svg viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <!-- ベースのグラデーション -->
+        <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0"  stop-color="#2b6cb0"/>
+          <stop offset="0.45" stop-color="#7a5cff"/>
+          <stop offset="1"  stop-color="#00d1ff"/>
+        </linearGradient>
+
+        <!-- 有機的に歪ませるノイズ -->
+        <filter id="warp">
+          <feTurbulence type="fractalNoise" baseFrequency="0.0025 0.0035" numOctaves="2" seed="7" result="noise">
+            <animate attributeName="baseFrequency"
+                     values="0.0025 0.0035;0.0035 0.0022;0.0028 0.0030;0.0025 0.0035"
+                     dur="35s" repeatCount="indefinite"/>
+          </feTurbulence>
+          <feDisplacementMap in="SourceGraphic" in2="noise" scale="140" xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+
+        <!-- ほんのり粒状感 -->
+        <filter id="grain" x="-20%" y="-20%" width="140%" height="140%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" stitchTiles="stitch" />
+          <feColorMatrix type="saturate" values="0" />
+          <feComponentTransfer>
+            <feFuncA type="table" tableValues="0 0 0 0.04 0.06 0"/>
+          </feComponentTransfer>
+        </filter>
+      </defs>
+
+      <!-- 塗りつぶし + 歪み -->
+      <rect width="1200" height="800" fill="url(#grad)" filter="url(#warp)"></rect>
+      <!-- 角度違いのグラデをうっすら重ねて奥行き -->
+      <g opacity="0.55" filter="url(#warp)">
+        <radialGradient id="rad1" cx="20%" cy="20%" r="70%">
+          <stop offset="0%" stop-color="#ff8e53"/>
+          <stop offset="100%" stop-color="#ff0080" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="rad2" cx="80%" cy="80%" r="65%">
+          <stop offset="0%" stop-color="#00ffa3"/>
+          <stop offset="100%" stop-color="#00d1ff" stop-opacity="0"/>
+        </radialGradient>
+        <circle cx="260" cy="220" r="420" fill="url(#rad1)"/>
+        <circle cx="980" cy="620" r="380" fill="url(#rad2)"/>
+      </g>
+      <!-- ノイズを極薄で -->
+      <rect width="1200" height="800" filter="url(#grain)"></rect>
+    </svg>
+  </div>
+
+  <!-- テキストオーバーレイ -->
   <div class="hero-overlay">
-    <div class="wrap" style="padding:40px 16px 56px;">
+    <div class="wrap" style="padding:48px 16px 64px;">
       <div class="chip">あなたの稼ぎを可視化</div>
-      <h1 style="margin:10px 0 6px 0;font-size:34px;font-weight:800">Delivery Navigator</h1>
+      <h1 style="margin:10px 0 6px 0;font-size:42px;font-weight:900;letter-spacing:.2px">Delivery Navigator</h1>
       <p class="muted" style="max-width:760px">実績の登録から可視化、時間帯×曜日ヒートマップで「いつ稼げるか」を教えます。</p>
-      <div class="row" style="margin-top:12px">
+      <div class="row" style="margin-top:14px">
         <a class="btn primary" href="{% url 'dashboard' %}">ダッシュボード</a>
         <a class="btn" href="/records">実績を入力</a>
         <a class="btn ghost" href="/upload">OCRで取込</a>

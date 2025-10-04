@@ -9,7 +9,7 @@
   <style>
     :root{
       --bg:#0b162f; --panel:#0f1e3d; --card:#13244a; --ink:#e6edf3;
-      --muted:#9fb3c8; --line:#1f2e56; --accent:#4cc9f0; --accent-2:#a0e8ff;
+      --muted:#9fb3c8; --line:#1f2e56; --accent:#4cc9f0;
     }
     *{box-sizing:border-box}
     html,body{height:100%}
@@ -33,7 +33,6 @@
     @media (max-width:900px){.grid.cols-3,.grid.cols-2{grid-template-columns:1fr}}
     .muted{color:var(--muted)}
     footer{color:var(--muted);padding:26px 0;border-top:1px solid var(--line);margin-top:28px}
-    /* forms & tables */
     table{width:100%;border-collapse:collapse;border:1px solid var(--line);border-radius:12px;overflow:hidden}
     thead th{background:#11234a;color:#cfe3ff;text-align:left;padding:10px;border-bottom:1px solid var(--line)}
     tbody td{padding:10px;border-bottom:1px solid var(--line)}
@@ -43,29 +42,21 @@
     label{font-size:12px;color:#b7c6de}
     .row{display:flex;gap:10px;flex-wrap:wrap}
 
-    /* === Full-bleed helper (wrapの外まで広げる) === */
-    .fullbleed{
-      position:relative;
-      left:50%; right:50%;
-      margin-left:-50vw; margin-right:-50vw;
-      width:100vw;
-    }
+    /* full-bleed（画面横いっぱいに） */
+    .fullbleed{position:relative;left:50%;right:50%;margin-left:-50vw;margin-right:-50vw;width:100vw}
 
-    /* === Hero === */
-    .hero{border-radius:16px;overflow:hidden;border:1px solid var(--line)}
-    .hero-img{
-      min-height:520px;                /* ← 大きく表示 */
-      background-size:cover;
-      background-position:center 35%;   /* 夜景をやや下寄せ */
-      filter:brightness(.92) contrast(1.05);
-    }
+    /* ===== HERO（フルスクリーン） ===== */
+    .hero{position:relative;border-radius:0;overflow:hidden;border-bottom:1px solid var(--line)}
+    .hero--fullscreen{min-height:92vh} /* 画面ほぼ全体 */
+    .hero-art{position:absolute;inset:0}
+    .hero-art svg{width:100%;height:100%;display:block}
     .hero-overlay{
       position:absolute; inset:0; display:flex; align-items:end;
-      background:linear-gradient(0deg,rgba(6,12,24,.40),rgba(6,12,24,.10));
+      background:linear-gradient(180deg,rgba(7,12,24,0.05) 0%, rgba(7,12,24,0.45) 60%, rgba(7,12,24,0.70) 100%);
     }
     @media (max-width:900px){
-      .hero-img{min-height:360px}
-      .hero-overlay{align-items:center}
+      .hero--fullscreen{min-height:80vh}
+      .hero-overlay{align-items:flex-end}
     }
   </style>
 </head>
@@ -92,7 +83,6 @@
     </div>
   </nav>
 
-  <!-- header は各ページで自由に（ホームはfullbleedを使う） -->
   <main class="wrap">
     {% block header %}{% endblock %}
     {% block content %}{% endblock %}

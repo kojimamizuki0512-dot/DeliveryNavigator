@@ -43,10 +43,30 @@
     label{font-size:12px;color:#b7c6de}
     .row{display:flex;gap:10px;flex-wrap:wrap}
 
-    /* hero helper */
-    .hero{position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--line)}
-    .hero-img{min-height:280px;background-size:cover;background-position:center;filter:brightness(.70)}
-    .hero-overlay{position:absolute;inset:0;display:flex;align-items:center;background:linear-gradient(0deg,rgba(6,12,24,.55),rgba(6,12,24,.20))}
+    /* === Full-bleed helper (wrapの外まで広げる) === */
+    .fullbleed{
+      position:relative;
+      left:50%; right:50%;
+      margin-left:-50vw; margin-right:-50vw;
+      width:100vw;
+    }
+
+    /* === Hero === */
+    .hero{border-radius:16px;overflow:hidden;border:1px solid var(--line)}
+    .hero-img{
+      min-height:520px;                /* ← 大きく表示 */
+      background-size:cover;
+      background-position:center 35%;   /* 夜景をやや下寄せ */
+      filter:brightness(.92) contrast(1.05);
+    }
+    .hero-overlay{
+      position:absolute; inset:0; display:flex; align-items:end;
+      background:linear-gradient(0deg,rgba(6,12,24,.40),rgba(6,12,24,.10));
+    }
+    @media (max-width:900px){
+      .hero-img{min-height:360px}
+      .hero-overlay{align-items:center}
+    }
   </style>
 </head>
 <body>
@@ -72,6 +92,7 @@
     </div>
   </nav>
 
+  <!-- header は各ページで自由に（ホームはfullbleedを使う） -->
   <main class="wrap">
     {% block header %}{% endblock %}
     {% block content %}{% endblock %}

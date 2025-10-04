@@ -3,14 +3,14 @@
 {% block title %}ホーム | Delivery Navigator{% endblock %}
 
 {% block header %}
-<section class="hero">
+<section class="fullbleed hero">
   <div class="hero-img" style="background-image:url('{% static 'img/home-hero.png' %}');"></div>
   <div class="hero-overlay">
-    <div style="padding:24px">
+    <div class="wrap" style="padding:40px 16px 56px;">
       <div class="chip">あなたの稼ぎを可視化</div>
-      <h1 style="margin:8px 0 6px 0;font-size:28px;font-weight:800">Delivery Navigator</h1>
+      <h1 style="margin:10px 0 6px 0;font-size:34px;font-weight:800">Delivery Navigator</h1>
       <p class="muted" style="max-width:760px">実績の登録から可視化、時間帯×曜日ヒートマップで「いつ稼げるか」を教えます。</p>
-      <div class="row" style="margin-top:10px">
+      <div class="row" style="margin-top:12px">
         <a class="btn primary" href="{% url 'dashboard' %}">ダッシュボード</a>
         <a class="btn" href="/records">実績を入力</a>
         <a class="btn ghost" href="/upload">OCRで取込</a>
@@ -60,7 +60,6 @@
   const fmt = d=>`${d.getFullYear()}-${('0'+(d.getMonth()+1)).slice(-2)}-${('0'+d.getDate()).slice(-2)}`;
   const today=new Date(), monthStart=new Date(today.getFullYear(), today.getMonth(), 1);
 
-  // KPI
   fetch(`/api/deliveries/summary?start=${fmt(monthStart)}&end=${fmt(today)}`)
     .then(r=>r.json()).then(s=>{
       document.getElementById('monthKpi').innerHTML = `
@@ -69,7 +68,6 @@
       `;
     });
 
-  // おすすめ時間帯（直近30日）
   const start=new Date(); start.setDate(today.getDate()-29);
   fetch(`/api/deliveries/heatmap?start=${fmt(start)}&end=${fmt(today)}`)
     .then(r=>r.json()).then(d=>{
@@ -77,7 +75,6 @@
       document.getElementById('topSlots').innerHTML = slots || '（時刻の入った実績が少ないため、まずは /records で開始/終了を入れてみてください）';
     });
 
-  // 最近5件
   {% if request.user.is_authenticated %}
   fetch('/api/deliveries/')
     .then(r=>r.json()).then(data=>{

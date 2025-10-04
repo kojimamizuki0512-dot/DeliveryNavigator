@@ -1,4 +1,3 @@
-# core/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
@@ -10,7 +9,7 @@ from .views import (
     AreaListView,
     AreaStatsView,
     AreaTodayPlanView,
-    AiConsentView,   # ← 追加
+    AiConsentView,
 )
 
 router = DefaultRouter()
@@ -21,12 +20,10 @@ urlpatterns = [
     path("", include(router.urls)),
     path("me/", MeView.as_view(), name="me"),
     path("ocr/import/", OcrImportView.as_view(), name="ocr-import"),
-
     # エリア関連
     path("areas/list/", AreaListView.as_view(), name="areas-list"),
     path("areas/stats/", AreaStatsView.as_view(), name="areas-stats"),
     path("areas/today_plan/", AreaTodayPlanView.as_view(), name="areas-today-plan"),
-
-    # ユーザー同意（集合学習への参加）
-    path("me/consent/", AiConsentView.as_view(), name="me-consent"),
+    # 同意
+    path("consent/", AiConsentView.as_view(), name="ai-consent"),
 ]

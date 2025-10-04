@@ -5,7 +5,7 @@ import shutil
 import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 from django.utils.dateparse import parse_date
 from django.core.files.base import ContentFile
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -28,19 +28,25 @@ from django.utils import timezone
 from PIL import Image
 import pytesseract
 
-from .models import DeliveryRecord, EntranceInfo, OcrImport  # UserAiConsent は後で遅延参照
+from .models import DeliveryRecord, EntranceInfo, OcrImport  # Consent は遅延参照
 from .serializers import (
     DeliveryRecordSerializer,
     EntranceInfoSerializer,
     UserPublicSerializer,
     OcrImportInputSerializer,
 )
+# 同意API用シリアライザ（存在しない環境でも落ちないように try）
+try:
+    from .serializers_consent import AiConsentSerializer
+except Exception:
+    AiConsentSerializer = None  # type: ignore
+
 from .areas import AREAS, AREAS_BY_SLUG, get_area, distance_km_between
 
-# LightGBM ONNX 推論器（存在しない場合はフォールバック）
+# LightGBM ONNX 推論器（未配置でもアプリは動くようフォールバック）
 try:
     from .ml.predictor import LgbmPredictor  # type: ignore
-except Exception:  # predictor が未配置でもアプリ全体は動かす
+except Exception:
     class _DummyPred:
         @classmethod
         def available(cls) -> bool: return False
@@ -71,7 +77,6 @@ def _ensure_tesseract_path():
         if os.path.exists(guess):
             pytesseract.pytesseract.tesseract_cmd = guess
             return
-    # 見つからない場合は pytesseract 側で例外が発生
 
 
 def _ocr_image_to_text(image_bytes: bytes) -> str:
@@ -85,9 +90,7 @@ def _ocr_image_to_text(image_bytes: bytes) -> str:
 
 
 def _parse_numbers(text: str):
-    """
-    OCR文字列から ゆるく数値を拾う（無ければ None）
-    """
+    """OCR文字列から ゆるく数値を拾う（無ければ None）"""
     norm = text.replace("：", ":").replace("　", " ")
 
     # 日付
@@ -111,8 +114,7 @@ def _parse_numbers(text: str):
         m = re.search(pat, norm, re.IGNORECASE)
         if m:
             try:
-                orders = int(m.group(1))
-                break
+                orders = int(m.group(1)); break
             except Exception:
                 pass
 
@@ -135,24 +137,20 @@ def _parse_numbers(text: str):
 
     # 稼働時間
     hours = None
-    for pat in [
-        r"\bHours?\s*:\s*(\d+(?:\.\d+)?)\s*h\b",
-        r"(\d+(?:\.\d+)?)\s*(?:h|時間)\b",
-    ]:
+    for pat in [r"\bHours?\s*:\s*(\d+(?:\.\d+)?)\s*h\b", r"(\d+(?:\.\d+)?)\s*(?:h|時間)\b"]:
         m = re.search(pat, norm, re.IGNORECASE)
         if m:
             try:
-                hours = float(m.group(1))
-                break
+                hours = float(m.group(1)); break
             except Exception:
                 pass
 
     return {"date": date, "orders": orders, "earnings": earnings, "hours": hours}
 
 
-# Decimal を安全に作る
 Q2 = Decimal("0.01")
 def _to_decimal_or_none(val):
+    """Decimal を安全に生成"""
     if val is None:
         return None
     if isinstance(val, str) and val.strip() == "":
@@ -167,9 +165,8 @@ def _to_decimal_or_none(val):
 
 
 def _repair_decimal_columns():
-    """既存データの不正値を安全に修復する。"""
+    """既存データの不正値を安全に修復する（DB差異は握り潰す）"""
     try:
-        # DBごとの差異は try/except で握り潰す（SQLite など）
         with connection.cursor() as cur:
             cur.execute(
                 """
@@ -197,7 +194,7 @@ def _repair_decimal_columns():
         pass
 
 
-# ---------- API（配達実績 / 既存） ----------
+# ---------- 配達実績 API（既存） ----------
 
 class DeliveryRecordViewSet(viewsets.ModelViewSet):
     serializer_class = DeliveryRecordSerializer
@@ -262,11 +259,7 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def heatmap(self, request):
         """
-        GET /api/deliveries/heatmap?start=YYYY-MM-DD&end=YYYY-MM-DD
-        返却: 7x24 の行列（weekday=0..6/月..日, hour=0..23）
-          values: その時間帯の平均時給（円/h）
-          counts: 積算した有効時間（h）サンプル量
-          top_slots: 推奨スロット（上位3件）
+        自分の実績だけで作る 7x24 平均
         """
         from math import floor, ceil
 
@@ -274,19 +267,16 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
             "date", "earnings", "hours_worked", "start_time", "end_time"
         )
 
-        # 集計バッファ
         sum_earn = [[0.0 for _ in range(24)] for _ in range(7)]
         sum_hours = [[0.0 for _ in range(24)] for _ in range(7)]
 
         for r in qs:
             if not r.start_time or not r.end_time or r.earnings is None:
-                # 時刻が無いデータはヒートマップには使わない（誤学習防止）
                 continue
 
             sh = r.start_time.hour + r.start_time.minute / 60.0
             eh = r.end_time.hour + r.end_time.minute / 60.0
 
-            # 同日内のみ（えいっで丸め）。終了<=開始なら hours_worked で補完
             if eh <= sh:
                 dur = float(r.hours_worked or 0) or 0.0
                 if dur <= 0:
@@ -297,11 +287,9 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
             if dur <= 0:
                 continue
 
-            wd = r.date.weekday()  # 0=Mon
-            # 時給を時間配分して加算
+            wd = r.date.weekday()
             earn = float(r.earnings)
             for h in range(max(0, floor(sh)), min(24, ceil(eh))):
-                # その時間枠にどれくらい被っているか（0..1）
                 left = max(sh, h)
                 right = min(eh, h + 1)
                 portion = max(0.0, right - left)
@@ -309,7 +297,6 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
                     sum_earn[wd][h] += earn * (portion / dur)
                     sum_hours[wd][h] += portion
 
-        # 平均時給 matrix を作成
         values = []
         vmax = 0.0
         for wd in range(7):
@@ -321,11 +308,10 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
                 vmax = max(vmax, val)
             values.append(row)
 
-        # 推奨スロット（上位3件、サンプル1時間以上）
         slots = []
         for wd in range(7):
             for h in range(24):
-                if sum_hours[wd][h] >= 1.0:  # 1時間以上のサンプル
+                if sum_hours[wd][h] >= 1.0:
                     slots.append((values[wd][h], wd, h, sum_hours[wd][h]))
         slots.sort(reverse=True, key=lambda x: x[0])
         name = ["月","火","水","木","金","土","日"]
@@ -333,12 +319,7 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
         for (v, wd, h, hrs) in slots[:3]:
             top.append({"label": f"{name[wd]} {h:02d}:00", "hourly": round(v), "hours": round(hrs, 1)})
 
-        return Response({
-            "values": values,
-            "counts": sum_hours,
-            "vmax": round(vmax),
-            "top_slots": top,
-        })
+        return Response({"values": values, "counts": sum_hours, "vmax": round(vmax), "top_slots": top})
 
 
 class EntranceInfoViewSet(viewsets.ModelViewSet):
@@ -364,7 +345,7 @@ class MeView(generics.RetrieveUpdateAPIView):
         return self.request.user
 
 
-# ---------- 画面（ユーザー向け） ----------
+# ---------- 画面 ----------
 
 class DashboardView(LoginRequiredMixin, TemplateView):
     login_url = '/login/'
@@ -382,25 +363,23 @@ class UploadView(LoginRequiredMixin, TemplateView):
 
 
 class RecordsView(LoginRequiredMixin, TemplateView):
-    """実績一覧/編集（フロントはAPI呼び出し）"""
     login_url = '/login/'
     template_name = 'records.html'
 
 
 class HomeView(TemplateView):
-    """トップ（地図ヒート + 今日のAIルート）"""
     template_name = 'home.html'
 
 
-# ---------- 集合学習系（エリア統計 / ルート提案） ----------
+# ---------- 集合学習（エリア統計 / ルート提案） ----------
 
-# 同意モデルは遅延 import（無い場合は「全ユーザー扱い」にフォールバック）
+# 同意モデルは遅延 import（未導入でもサービスは動く）
 def _get_opted_user_ids() -> set[int]:
     try:
         from .models import UserAiConsent  # type: ignore
         return set(UserAiConsent.objects.filter(share_aggregated=True).values_list("user_id", flat=True))
     except Exception:
-        # モデル未導入でもサービスは動かす
+        # モデル未導入 → 全ユーザーを対象
         return set(DeliveryRecord.objects.values_list("user_id", flat=True))
 
 
@@ -485,16 +464,12 @@ def _hourly_stats_for(dow: int, hour: int, lookback_days: int = 28):
 
 
 def _blend(base: dict, ml: dict, alpha_from_samples: bool = True, alpha_const: float = 0.6):
-    """
-    base と ml をブレンド。alpha は base の重み。
-    alpha_from_samples=True の場合は samples_h に基づく動的重み。
-    """
+    """base と ml をブレンド。alpha は base の重み。"""
     out = {}
     for slug in AREAS_BY_SLUG.keys():
         b = base.get(slug, {"hourly": 0.0, "samples_h": 0.0})
         m = ml.get(slug, 0.0)
         if alpha_from_samples:
-            # 目安: サンプル1hでalpha=0.25, 3hで~0.6, 6hで~0.75
             denom = b["samples_h"] + 2.0
             alpha = max(0.2, min(0.85, b["samples_h"] / denom if denom > 0 else 0.2))
         else:
@@ -518,7 +493,7 @@ class AreaStatsView(APIView):
         now = timezone.now()
         dow = int(request.GET.get("dow", now.weekday()))
         hour = int(request.GET.get("hour", now.hour))
-        mode = request.GET.get("mode", "blend")  # "base" | "ml" | "blend"
+        mode = request.GET.get("mode", "blend")  # base | ml | blend
 
         base = _hourly_stats_for(dow, hour)
         if mode == "base" or not LgbmPredictor.available():
@@ -586,7 +561,6 @@ class AreaTodayPlanView(APIView):
                 ml = LgbmPredictor.predict_for_all(dow, hour) if LgbmPredictor.available() else {}
                 used = _blend(base, ml, alpha_from_samples=True)
 
-            # ペナルティ付き最大選択
             best = None
             for slug, s in used.items():
                 score = float(s["hourly"])
@@ -608,16 +582,9 @@ class AreaTodayPlanView(APIView):
             cur_area = chosen_slug
             t += datetime.timedelta(hours=1)
 
-        # 連続同一エリアをまとめる
         blocks = []
         if slots:
-            cur = {
-                "start": slots[0]["at"],
-                "end": None,
-                "slug": slots[0]["slug"],
-                "hourlies": [],
-                "samples": 0.0,
-            }
+            cur = {"start": slots[0]["at"], "end": None, "slug": slots[0]["slug"], "hourlies": [], "samples": 0.0}
             for i, sl in enumerate(slots):
                 if sl["slug"] != cur["slug"]:
                     last = datetime.datetime.strptime(slots[i - 1]["at"], "%H:%M") + datetime.timedelta(hours=1)
@@ -646,11 +613,10 @@ class AreaTodayPlanView(APIView):
         return Response({"generated_at": timezone.localtime().isoformat(), "mode": mode, "blocks": out})
 
 
-# ---------- サインアップ（UI） ----------
+# ---------- サインアップ ----------
 
 class SignUpForm(UserCreationForm):
     email = forms.EmailField(required=False)
-
     class Meta(UserCreationForm.Meta):
         model = get_user_model()
         fields = ("username", "email")  # password1/password2 は UserCreationForm が持つ
@@ -690,9 +656,7 @@ def _save_decimal_fields(rec: DeliveryRecord, parsed: dict) -> list[str]:
 
 
 class OcrImportView(generics.GenericAPIView):
-    """
-    POST /api/ocr/import/
-    """
+    """POST /api/ocr/import/"""
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
     serializer_class = OcrImportInputSerializer
@@ -744,7 +708,6 @@ class OcrImportView(generics.GenericAPIView):
                 rec.save(update_fields=updated_fields)
         else:
             rec = DeliveryRecord(user=request.user, date=date)
-            # 初期値（空でないものだけセット）
             if parsed.get("orders") is not None:
                 rec.orders_completed = int(parsed["orders"])
             dec = _to_decimal_or_none(parsed.get("earnings"))
@@ -755,7 +718,6 @@ class OcrImportView(generics.GenericAPIView):
             created = True
             updated_fields = []
 
-        # 取り込みログ
         job = OcrImport(user=request.user, status="success")
         job.image.save(image.name or "upload.png", ContentFile(data))
         job.raw_text = raw_text
@@ -777,3 +739,38 @@ class OcrImportView(generics.GenericAPIView):
             "parsed": job.parsed_json,
             "raw_text": raw_text,
         }, status=status.HTTP_201_CREATED)
+
+
+# ---------- 同意（オプトイン/アウト）API ----------
+
+class AiConsentView(APIView):
+    """
+    GET  /api/consent/        -> { share_aggregated, updated_at }
+    PUT  /api/consent/        -> body: { "share_aggregated": true/false }
+    ※ モデル/シリアライザが未導入の環境では 501 を返す
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_model(self):
+        try:
+            from .models import UserAiConsent  # type: ignore
+            return UserAiConsent
+        except Exception:
+            return None
+
+    def get(self, request):
+        Model = self._get_model()
+        if (Model is None) or (AiConsentSerializer is None):
+            return Response({"detail": "consent module not available"}, status=501)
+        obj, _ = Model.objects.get_or_create(user=request.user)
+        return Response(AiConsentSerializer(obj).data)
+
+    def put(self, request):
+        Model = self._get_model()
+        if (Model is None) or (AiConsentSerializer is None):
+            return Response({"detail": "consent module not available"}, status=501)
+        obj, _ = Model.objects.get_or_create(user=request.user)
+        ser = AiConsentSerializer(obj, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)

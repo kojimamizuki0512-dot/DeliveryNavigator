@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}実績を入力 | Delivery Navigator{% endblock %}
+
+{% block content %}
+<main class="container" style="max-width: 720px; margin: 2rem auto; padding: 1rem;">
+  <h1 style="margin-bottom: 1rem;">実績を入力</h1>
+
+  {# 上部サマリーエラー #}
+  {% if form.non_field_errors %}
+    <div style="padding: 0.75rem; border: 1px solid #f99; background: #fee; border-radius: 8px; margin-bottom: 1rem;">
+      {% for e in form.non_field_errors %}
+        <div>{{ e }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+
+    <div style="display:grid; gap: 1rem;">
+      {# date #}
+      <label>
+        日付 <span style="color:#e33">*</span><br>
+        {{ form.date }}
+        {% if form.date.errors %}<div style="color:#e33;">{{ form.date.errors|striptags }}</div>{% endif %}
+      </label>
+
+      {# earnings #}
+      <label>
+        売上（円）<span style="color:#e33">*</span><br>
+        {{ form.earnings }}
+        <small>小数2桁まで推奨（例: 8250.00）</small>
+        {% if form.earnings.errors %}<div style="color:#e33;">{{ form.earnings.errors|striptags }}</div>{% endif %}
+      </label>
+
+      {# orders #}
+      <label>
+        件数<span style="color:#e33">*</span><br>
+        {{ form.orders }}
+        {% if form.orders.errors %}<div style="color:#e33;">{{ form.orders.errors|striptags }}</div>{% endif %}
+      </label>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <label>
+          開始時刻<br>
+          {{ form.start_time }}
+          {% if form.start_time.errors %}<div style="color:#e33;">{{ form.start_time.errors|striptags }}</div>{% endif %}
+        </label>
+        <label>
+          終了時刻<br>
+          {{ form.end_time }}
+          {% if form.end_time.errors %}<div style="color:#e33;">{{ form.end_time.errors|striptags }}</div>{% endif %}
+        </label>
+      </div>
+
+      {# hours（モデルに無い場合はこのブロックごと削除） #}
+      {% if form.hours %}
+      <label>
+        稼働時間（h）<br>
+        {{ form.hours }}
+        <small>開始/終了を入れると自動計算されます</small>
+        {% if form.hours.errors %}<div style="color:#e33;">{{ form.hours.errors|striptags }}</div>{% endif %}
+      </label>
+      {% endif %}
+
+      {# note（モデルに無い場合はこのブロックごと削除） #}
+      {% if form.note %}
+      <label>
+        メモ（任意）<br>
+        {{ form.note }}
+        {% if form.note.errors %}<div style="color:#e33;">{{ form.note.errors|striptags }}</div>{% endif %}
+      </label>
+      {% endif %}
+    </div>
+
+    <div style="margin-top: 1.25rem; display:flex; gap:0.75rem;">
+      <button type="submit" style="padding:0.6rem 1.2rem; border-radius: 10px;">登録する</button>
+      <a href="{% url 'dashboard' %}" style="padding:0.6rem 1.2rem; border-radius: 10px; border:1px solid #ccc; text-decoration:none;">ダッシュボードへ</a>
+    </div>
+  </form>
+</main>
+
+<script>
+  // start/end から hours を自動計算（hours フィールドがあるとき）
+  (function(){
+    const date = document.querySelector('input[name="date"]');
+    const s = document.querySelector('input[name="start_time"]');
+    const e = document.querySelector('input[name="end_time"]');
+    const h = document.querySelector('input[name="hours"]');
+
+    function calc() {
+      if (!date || !s || !e || !h) return;
+      if (!date.value || !s.value || !e.value) return;
+
+      const start = new Date(`${date.value}T${s.value}`);
+      const end = new Date(`${date.value}T${e.value}`);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
+      if (end < start) return; // 日またぎは別途仕様検討
+
+      const diffH = Math.round((end - start) / 36e5 * 100) / 100;
+      if (!isFinite(diffH) || diffH < 0) return;
+
+      if (!h.value) {
+        h.value = diffH.toFixed(2);
+      }
+    }
+
+    if (s) s.addEventListener("change", calc);
+    if (e) e.addEventListener("change", calc);
+    if (date) date.addEventListener("change", calc);
+  })();
+</script>
+{% endblock %}

@@ -153,20 +153,39 @@ def _to_decimal_or_none(val):
 
 
 def _repair_decimal_columns():
-    """既存データの不正値を安全に修復する。"""
+    """
+    既存データの不正値を安全に修復する。
+    Postgres の NUMERIC 列に対しては text キャストしてから lower/trim を適用。
+    SQLite でも動くように例外は握りつぶす（無害なら何もしない）。
+    """
     try:
         with connection.cursor() as cur:
+            # earnings を '0' に補正（空文字/NaN/Inf が文字列で残っている場合のみ）
             cur.execute(
-                "UPDATE core_deliveryrecord "
-                "SET earnings='0' "
-                "WHERE earnings IS NOT NULL AND (trim(earnings)='' OR lower(earnings) IN ('nan','inf','-inf'))"
+                """
+                UPDATE core_deliveryrecord
+                   SET earnings = '0'
+                 WHERE earnings IS NOT NULL
+                   AND (
+                        trim(earnings::text) = '' OR
+                        lower(earnings::text) IN ('nan','inf','-inf')
+                   )
+                """
             )
+            # hours_worked は NULL に補正
             cur.execute(
-                "UPDATE core_deliveryrecord "
-                "SET hours_worked=NULL "
-                "WHERE hours_worked IS NOT NULL AND (trim(hours_worked)='' OR lower(hours_worked) IN ('nan','inf','-inf'))"
+                """
+                UPDATE core_deliveryrecord
+                   SET hours_worked = NULL
+                 WHERE hours_worked IS NOT NULL
+                   AND (
+                        trim(hours_worked::text) = '' OR
+                        lower(hours_worked::text) IN ('nan','inf','-inf')
+                   )
+                """
             )
     except Exception:
+        # キャストが不要/未対応なDB（SQLite等）では無視
         pass
 
 
@@ -204,13 +223,13 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
         total_orders = int(agg["total_orders"] or 0)
         total_earnings = float(agg["total_earnings"] or 0)
         total_hours = float(agg["total_hours"] or 0)
-        hourly = total_hours and (total_earnings / total_hours) or None
+        hourly = total_earnings / total_hours if total_hours > 0 else None
         return Response({
             "count": qs.count(),
             "total_orders": total_orders,
-            "total_earnings": total_earnings,
-            "total_hours": total_hours,
-            "hourly_rate": hourly,
+            "total_earnings": round(total_earnings, 2),
+            "total_hours": round(total_hours, 2),
+            "hourly_rate": round(hourly, 2) if hourly is not None else None,
         })
 
     @action(detail=False, methods=["get"])
@@ -252,14 +271,15 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
         sum_hours = [[0.0 for _ in range(24)] for _ in range(7)]
 
         for r in qs:
-            if not r.start_time or not r.end_time or not r.earnings:
-                # 時刻が無いデータはヒートマップには使わない（誤学習防止）
+            # 売上0円は「0」として集計したいので None のみ除外
+            if (r.start_time is None) or (r.end_time is None) or (r.earnings is None):
+                # 時刻 or 売上が欠損していればヒートマップには使わない（誤学習防止）
                 continue
 
             sh = r.start_time.hour + r.start_time.minute / 60.0
             eh = r.end_time.hour + r.end_time.minute / 60.0
 
-            # 同日内のみ（えいっで丸め）。終了<=開始なら hours_worked で補完
+            # 同日内のみ（終了<=開始なら hours_worked で補完）
             if eh <= sh:
                 dur = float(r.hours_worked or 0) or 0.0
                 if dur <= 0:
@@ -271,10 +291,10 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
                 continue
 
             wd = r.date.weekday()  # 0=Mon
-            # 時給を時間配分して加算
             earn = float(r.earnings)
+
+            # 時給 = 売上 / 稼働時間。各1時間枠へ比率配分
             for h in range(max(0, floor(sh)), min(24, ceil(eh))):
-                # その時間枠にどれくらい被っているか（0..1）
                 left = max(sh, h)
                 right = min(eh, h + 1)
                 portion = max(0.0, right - left)
@@ -304,7 +324,7 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
         name = ["月","火","水","木","金","土","日"]
         top = []
         for i, (v, wd, h, hrs) in enumerate(slots[:3]):
-            top.append({"label": f"{name[wd]} {h:02d}:00", "hourly": round(v), "hours": round(hrs,1)})
+            top.append({"label": f"{name[wd]} {h:02d}:00", "hourly": round(v), "hours": round(hrs, 1)})
 
         return Response({
             "values": values,
@@ -312,8 +332,6 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
             "vmax": round(vmax),
             "top_slots": top,
         })
-    
-    
 
 
 class EntranceInfoViewSet(viewsets.ModelViewSet):
@@ -471,7 +489,7 @@ class OcrImportView(generics.GenericAPIView):
                 rec.save(update_fields=updated_fields)
 
         job = OcrImport(user=request.user, status="success")
-        job.image.save(image.name, ContentFile(data))
+        job.image.save(image.name or "upload.png", ContentFile(data))
         job.raw_text = raw_text
         job.parsed_json = {
             "date": date.isoformat(),

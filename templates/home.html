@@ -1,144 +1,143 @@
 {% extends "base.html" %}
-{% load static %}
-{% block title %}ホーム | Delivery Navigator{% endblock %}
+{% block title %}Delivery Navigator | ホーム{% endblock %}
 
 {% block header %}
-<section class="fullbleed hero hero--fullscreen">
-  <!-- ▼ 斬新な“液体グラデ”SVG（画像ファイル不要／ゆっくり動きます） -->
-  <div class="hero-art" aria-hidden="true">
-    <svg viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
-      <defs>
-        <!-- ベースのグラデーション -->
-        <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0"  stop-color="#2b6cb0"/>
-          <stop offset="0.45" stop-color="#7a5cff"/>
-          <stop offset="1"  stop-color="#00d1ff"/>
-        </linearGradient>
-
-        <!-- 有機的に歪ませるノイズ -->
-        <filter id="warp">
-          <feTurbulence type="fractalNoise" baseFrequency="0.0025 0.0035" numOctaves="2" seed="7" result="noise">
-            <animate attributeName="baseFrequency"
-                     values="0.0025 0.0035;0.0035 0.0022;0.0028 0.0030;0.0025 0.0035"
-                     dur="35s" repeatCount="indefinite"/>
-          </feTurbulence>
-          <feDisplacementMap in="SourceGraphic" in2="noise" scale="140" xChannelSelector="R" yChannelSelector="G"/>
-        </filter>
-
-        <!-- ほんのり粒状感 -->
-        <filter id="grain" x="-20%" y="-20%" width="140%" height="140%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" stitchTiles="stitch" />
-          <feColorMatrix type="saturate" values="0" />
-          <feComponentTransfer>
-            <feFuncA type="table" tableValues="0 0 0 0.04 0.06 0"/>
-          </feComponentTransfer>
-        </filter>
-      </defs>
-
-      <!-- 塗りつぶし + 歪み -->
-      <rect width="1200" height="800" fill="url(#grad)" filter="url(#warp)"></rect>
-      <!-- 角度違いのグラデをうっすら重ねて奥行き -->
-      <g opacity="0.55" filter="url(#warp)">
-        <radialGradient id="rad1" cx="20%" cy="20%" r="70%">
-          <stop offset="0%" stop-color="#ff8e53"/>
-          <stop offset="100%" stop-color="#ff0080" stop-opacity="0"/>
-        </radialGradient>
-        <radialGradient id="rad2" cx="80%" cy="80%" r="65%">
-          <stop offset="0%" stop-color="#00ffa3"/>
-          <stop offset="100%" stop-color="#00d1ff" stop-opacity="0"/>
-        </radialGradient>
-        <circle cx="260" cy="220" r="420" fill="url(#rad1)"/>
-        <circle cx="980" cy="620" r="380" fill="url(#rad2)"/>
-      </g>
-      <!-- ノイズを極薄で -->
-      <rect width="1200" height="800" filter="url(#grain)"></rect>
-    </svg>
+<section class="hero hero--fullscreen fullbleed">
+  <div class="hero-art">
+    <!-- シンプルなグラデーション背景（SVGでもOK） -->
+    <div style="position:absolute;inset:0;background:radial-gradient(80% 60% at 50% 20%, rgba(76,201,240,0.18), transparent 60%), linear-gradient(180deg, rgba(12,20,38,0.2), rgba(12,20,38,0.6));"></div>
   </div>
-
-  <!-- テキストオーバーレイ -->
   <div class="hero-overlay">
-    <div class="wrap" style="padding:48px 16px 64px;">
-      <div class="chip">あなたの稼ぎを可視化</div>
-      <h1 style="margin:10px 0 6px 0;font-size:42px;font-weight:900;letter-spacing:.2px">Delivery Navigator</h1>
-      <p class="muted" style="max-width:760px">実績の登録から可視化、時間帯×曜日ヒートマップで「いつ稼げるか」を教えます。</p>
-      <div class="row" style="margin-top:14px">
-        <a class="btn primary" href="{% url 'dashboard' %}">ダッシュボード</a>
-        <a class="btn" href="/records">実績を入力</a>
-        <a class="btn ghost" href="/upload">OCRで取込</a>
-      </div>
+    <div class="wrap" style="padding:28px 16px;">
+      <h1 style="font-size:clamp(28px,5vw,44px);margin:0 0 6px;">「いま」「きょう」の、最適スポットを。</h1>
+      <p class="muted" style="margin:0;">配達直前にチェック → 今日のルートをAIが提案。待機中はリアルタイムランキングで微調整。</p>
     </div>
   </div>
 </section>
 {% endblock %}
 
 {% block content %}
-<div class="grid cols-3" style="margin-top:16px">
-  <div class="card">
-    <h3 style="margin:0 0 4px 0">クイックアクション</h3>
-    <div class="grid cols-2" style="margin-top:8px">
-      <a class="btn" href="/records">今日の実績を追加</a>
-      <a class="btn" href="/api/deliveries/export/">CSVエクスポート</a>
-      <a class="btn" href="/upload">スクショから取込</a>
-      <a class="btn" href="{% url 'map' %}">AIマップを見る</a>
+<div class="grid cols-2" style="margin-top:18px;">
+  <!-- 左：リアルタイム（今の時刻の）エリア別ランキング -->
+  <section class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <h2 style="margin:0;font-size:18px;">いまのおすすめ（エリア別）</h2>
+      <span class="chip" id="rank-meta">--</span>
     </div>
-  </div>
+    <div id="rank-list" class="grid" style="gap:8px;"></div>
+    <div class="muted" style="margin-top:8px;font-size:12px;">※ サンプル時間が少ないエリアは精度が低くなります。</div>
+  </section>
 
-  <div class="card">
-    <h3 style="margin:0 0 4px 0">今月のハイライト</h3>
-    <div id="monthKpi" class="grid cols-2" style="margin-top:8px"></div>
-  </div>
+  <!-- 右：今日のAIルート -->
+  <section class="card">
+    <h2 style="margin:0 0 8px;font-size:18px;">今日のAIルート</h2>
 
-  <div class="card">
-    <h3 style="margin:0 0 4px 0">おすすめ時間帯</h3>
-    <p id="topSlots" class="muted" style="margin:8px 0 0 0">分析中…</p>
-  </div>
+    <div class="row" style="margin-bottom:10px;">
+      <div style="flex:1;min-width:160px">
+        <label>開始時刻</label>
+        <input id="plan-start" type="time">
+      </div>
+      <div style="width:140px">
+        <label>稼働時間</label>
+        <select id="plan-hours">
+          <option value="3">3時間</option>
+          <option value="4" selected>4時間</option>
+          <option value="5">5時間</option>
+          <option value="6">6時間</option>
+        </select>
+      </div>
+      <div style="width:160px">
+        <label>移動ペナルティ (円/km)</label>
+        <input id="plan-beta" type="number" step="10" min="0" value="120">
+      </div>
+      <div style="align-self:end">
+        <button class="btn primary" id="btn-make-plan">ルートを作成</button>
+      </div>
+    </div>
+
+    <div id="plan-list" class="grid" style="gap:8px;"></div>
+  </section>
 </div>
-
-{% if request.user.is_authenticated %}
-<div class="card" style="margin-top:16px">
-  <h3 style="margin:0">最近の実績（5件）</h3>
-  <table style="margin-top:8px">
-    <thead><tr><th>日付</th><th>件数</th><th>売上(円)</th><th>時間</th><th>開始</th><th>終了</th></tr></thead>
-    <tbody id="recent"></tbody>
-  </table>
-  <div style="text-align:right;margin-top:8px"><a class="btn" href="/records">すべて見る</a></div>
-</div>
-{% endif %}
 
 <script>
-(function(){
-  const yen = n => (Math.round(+n)).toLocaleString('ja-JP');
-  const fmt = d=>`${d.getFullYear()}-${('0'+(d.getMonth()+1)).slice(-2)}-${('0'+d.getDate()).slice(-2)}`;
-  const today=new Date(), monthStart=new Date(today.getFullYear(), today.getMonth(), 1);
+async function fetchJSON(url){
+  const r = await fetch(url, {credentials: "same-origin"});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  return await r.json();
+}
 
-  fetch(`/api/deliveries/summary?start=${fmt(monthStart)}&end=${fmt(today)}`)
-    .then(r=>r.json()).then(s=>{
-      document.getElementById('monthKpi').innerHTML = `
-        <div class="card"><div class="muted">売上合計</div><div style="font-size:22px;font-weight:800">${yen(s.total_earnings||0)} 円</div></div>
-        <div class="card"><div class="muted">件数</div><div style="font-size:22px;font-weight:800">${s.total_orders||0} 件</div></div>
-      `;
-    });
+function nowHHMM() {
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = d.getMinutes();
+  const m = Math.ceil(mm/15)*15;
+  const adj = (m===60)? "00" : String(m).padStart(2,'0');
+  if(m===60 && hh!=="23"){ return String(Number(hh)+1).padStart(2,'0') + ":" + adj; }
+  if(m===60 && hh==="23"){ return "23:45"; }
+  return `${hh}:${adj}`;
+}
 
-  const start=new Date(); start.setDate(today.getDate()-29);
-  fetch(`/api/deliveries/heatmap?start=${fmt(start)}&end=${fmt(today)}`)
-    .then(r=>r.json()).then(d=>{
-      const slots = (d.top_slots||[]).map(x=>`${x.label}：<b>${x.hourly.toLocaleString()}円/h</b>`).join(' ・ ');
-      document.getElementById('topSlots').innerHTML = slots || '（時刻の入った実績が少ないため、まずは /records で開始/終了を入れてみてください）';
-    });
+// ランキング描画
+function renderRanking(data){
+  const meta = document.getElementById('rank-meta');
+  meta.textContent = `曜:${data.dow} 時:${String(data.hour).padStart(2,'0')}:00`;
+  const wrap = document.getElementById('rank-list'); wrap.innerHTML = "";
+  data.ranking.slice(0,10).forEach((r, idx) => {
+    const a = document.createElement('div');
+    a.className = 'card'; a.style.padding = '10px';
+    a.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;gap:8px;align-items:center;">
+          <div class="chip">#${idx+1}</div>
+          <div><div style="font-weight:700">${r.name}</div>
+               <div class="muted" style="font-size:12px">期待時給: 約${r.hourly}円/h・サンプル${r.samples_h}h</div></div>
+        </div>
+        <a class="btn" href="https://maps.google.com/?q=${r.lat},${r.lng}" target="_blank" rel="noopener">地図</a>
+      </div>`;
+    wrap.appendChild(a);
+  });
+}
 
-  {% if request.user.is_authenticated %}
-  fetch('/api/deliveries/')
-    .then(r=>r.json()).then(data=>{
-      const rows = Array.isArray(data) ? data.slice(0,5) : (data.results||[]).slice(0,5);
-      document.getElementById('recent').innerHTML = rows.map(r=>`
-        <tr>
-          <td>${r.date}</td><td>${r.orders_completed}</td>
-          <td>${r.earnings}</td><td>${r.hours_worked??''}</td>
-          <td>${r.start_time??''}</td><td>${r.end_time??''}</td>
-        </tr>
-      `).join('');
-    });
-  {% endif %}
-})();
+// ルート描画
+function renderPlan(data){
+  const wrap = document.getElementById('plan-list'); wrap.innerHTML = "";
+  if(!data.blocks || data.blocks.length===0){
+    wrap.innerHTML = `<div class="muted">データが少ないため、十分な精度で提案できません。過去の実績入力（エリア選択付き）をお願いします。</div>`;
+    return;
+  }
+  data.blocks.forEach(b => {
+    const el = document.createElement('div');
+    el.className = 'card'; el.style.padding = '10px';
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;">
+        <div>
+          <div style="font-weight:700">${b.time} — ${b.name}</div>
+          <div class="muted" style="font-size:12px">期待時給: 約${b.expected_hourly}円/h ・ サンプル${b.samples_h}h</div>
+        </div>
+        <a class="btn" href="https://maps.google.com/?q=${b.lat},${b.lng}" target="_blank" rel="noopener">この地点を地図で開く</a>
+      </div>`;
+    wrap.appendChild(el);
+  });
+}
+
+async function refreshRanking(){
+  const now = new Date();
+  const data = await fetchJSON(`/api/areas/stats/?dow=${now.getDay()===0?6:now.getDay()-1}&hour=${now.getHours()}`);
+  renderRanking(data);
+}
+async function makePlan(){
+  const start = document.getElementById('plan-start').value || nowHHMM();
+  const hours = document.getElementById('plan-hours').value;
+  const beta = document.getElementById('plan-beta').value;
+  const data = await fetchJSON(`/api/areas/today_plan/?start=${encodeURIComponent(start)}&hours=${hours}&beta=${beta}`);
+  renderPlan(data);
+}
+
+// 初期化
+document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('plan-start').value = nowHHMM();
+  try { await refreshRanking(); } catch(e){ console.error(e); }
+  document.getElementById('btn-make-plan').addEventListener('click', makePlan);
+});
 </script>
 {% endblock %}

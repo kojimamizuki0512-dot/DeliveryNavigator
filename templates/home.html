@@ -1,143 +1,261 @@
 {% extends "base.html" %}
-{% block title %}Delivery Navigator | ホーム{% endblock %}
+
+{% block title %}Delivery Navigator — 今日のAIルートと今すぐ稼げるエリア{% endblock %}
 
 {% block header %}
+<!-- ヒーロー：フルスクリーンSVG + 主要CTA -->
 <section class="hero hero--fullscreen fullbleed">
   <div class="hero-art">
-    <!-- シンプルなグラデーション背景（SVGでもOK） -->
-    <div style="position:absolute;inset:0;background:radial-gradient(80% 60% at 50% 20%, rgba(76,201,240,0.18), transparent 60%), linear-gradient(180deg, rgba(12,20,38,0.2), rgba(12,20,38,0.6));"></div>
+    <!-- シンプルなインラインSVG（軽量） -->
+    <svg viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <linearGradient id="g1" x1="0" x2="1">
+          <stop offset="0" stop-color="#102a56"/>
+          <stop offset="1" stop-color="#0b1e3f"/>
+        </linearGradient>
+        <radialGradient id="glow" cx="70%" cy="30%" r="60%">
+          <stop offset="0" stop-color="#4cc9f0" stop-opacity="0.25"/>
+          <stop offset="1" stop-color="#4cc9f0" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <rect width="1200" height="600" fill="url(#g1)"/>
+      <circle cx="840" cy="180" r="300" fill="url(#glow)"/>
+      <g opacity="0.18">
+        {% for i in "0123456789" %}
+        <path d="M0 {{ 50|add:50|add:forloop.counter0|add:forloop.counter0 }} H1200" stroke="#4cc9f0"/>
+        {% endfor %}
+      </g>
+    </svg>
   </div>
   <div class="hero-overlay">
-    <div class="wrap" style="padding:28px 16px;">
-      <h1 style="font-size:clamp(28px,5vw,44px);margin:0 0 6px;">「いま」「きょう」の、最適スポットを。</h1>
-      <p class="muted" style="margin:0;">配達直前にチェック → 今日のルートをAIが提案。待機中はリアルタイムランキングで微調整。</p>
+    <div class="wrap" style="display:flex; flex-direction:column; gap:16px; padding:28px 16px;">
+      <div class="chip">β — 集合学習中</div>
+      <h1 style="margin:0; line-height:1.15; font-weight:800; font-size:clamp(28px, 6vw, 48px);">
+        今日どこで稼ぐ？<br/>
+        <span style="color:var(--accent)">AIが時間帯ごとにエリアを提案</span>
+      </h1>
+      <p class="muted" style="max-width:720px">
+        出発前に“今日のAIルート”を決めて、待機中は“いま熱いエリア”をチェック。<br/>
+        提案はあなたや他の配達員の実績（同意者のみ、匿名集計）から学習されています。
+      </p>
+
+      <!-- ルート生成フォーム（軽量JS） -->
+      <div class="card" style="display:flex; flex-wrap:wrap; gap:10px; align-items:end; max-width:860px">
+        <div style="flex:1 1 160px; min-width:140px">
+          <label>開始時刻</label>
+          <input id="plan-start" type="time"/>
+        </div>
+        <div style="width:140px">
+          <label>稼働時間（h）</label>
+          <select id="plan-hours">
+            <option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option><option>8</option>
+          </select>
+        </div>
+        <div style="width:200px">
+          <label>移動コスト（円/h・km）</label>
+          <select id="plan-beta">
+            <option value="80">低（80）</option>
+            <option value="120" selected>中（120）</option>
+            <option value="160">高（160）</option>
+          </select>
+        </div>
+        <div style="display:flex; gap:8px">
+          <button class="btn primary" id="btn-generate">今日のAIルートを作成</button>
+          <button class="btn" id="btn-refresh-now">今すぐエリア更新</button>
+        </div>
+        <div class="muted" id="status-line" style="font-size:12px; flex:1 1 100%">
+          …
+        </div>
+      </div>
     </div>
   </div>
 </section>
 {% endblock %}
 
 {% block content %}
-<div class="grid cols-2" style="margin-top:18px;">
-  <!-- 左：リアルタイム（今の時刻の）エリア別ランキング -->
+<!-- 2カラム：左=“いま稼げる”ランキング、右=“今日のAIルート” -->
+<div class="grid cols-2" style="margin-top:16px">
+
+  <!-- 左：いま熱いエリア（ランキング + 疑似ヒート） -->
   <section class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-      <h2 style="margin:0;font-size:18px;">いまのおすすめ（エリア別）</h2>
-      <span class="chip" id="rank-meta">--</span>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <h2 style="margin:0">いま稼げるエリア</h2>
+      <div class="chip" id="now-meta">—</div>
     </div>
-    <div id="rank-list" class="grid" style="gap:8px;"></div>
-    <div class="muted" style="margin-top:8px;font-size:12px;">※ サンプル時間が少ないエリアは精度が低くなります。</div>
+    <div id="hot-list" style="display:grid; gap:8px; margin-top:12px">
+      <!-- JSでレンダリング -->
+    </div>
+    <div class="muted" style="font-size:12px; margin-top:10px">
+      ※ サンプル時間が少ないエリアは精度が下がります。<br/>
+      ※ 2分ごとに自動更新（手動は上の「今すぐエリア更新」）。
+    </div>
   </section>
 
   <!-- 右：今日のAIルート -->
   <section class="card">
-    <h2 style="margin:0 0 8px;font-size:18px;">今日のAIルート</h2>
-
-    <div class="row" style="margin-bottom:10px;">
-      <div style="flex:1;min-width:160px">
-        <label>開始時刻</label>
-        <input id="plan-start" type="time">
-      </div>
-      <div style="width:140px">
-        <label>稼働時間</label>
-        <select id="plan-hours">
-          <option value="3">3時間</option>
-          <option value="4" selected>4時間</option>
-          <option value="5">5時間</option>
-          <option value="6">6時間</option>
-        </select>
-      </div>
-      <div style="width:160px">
-        <label>移動ペナルティ (円/km)</label>
-        <input id="plan-beta" type="number" step="10" min="0" value="120">
-      </div>
-      <div style="align-self:end">
-        <button class="btn primary" id="btn-make-plan">ルートを作成</button>
-      </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <h2 style="margin:0">今日のAIルート</h2>
+      <div class="chip" id="plan-meta">未生成</div>
     </div>
-
-    <div id="plan-list" class="grid" style="gap:8px;"></div>
+    <ol id="plan-list" style="margin-top:10px; padding-left:18px">
+      <!-- JSでレンダリング -->
+    </ol>
+    <div id="plan-empty" class="muted" style="font-size:13px">
+      上のフォームで開始時刻・稼働時間を選んで<strong>「今日のAIルートを作成」</strong>してください。
+    </div>
+    <div class="row" id="plan-actions" style="display:none; margin-top:10px">
+      <a class="btn ghost" href="/map">AIマップで見る</a>
+      <button class="btn" id="btn-copy-plan">ルートをコピー</button>
+    </div>
   </section>
+
 </div>
 
 <script>
-async function fetchJSON(url){
-  const r = await fetch(url, {credentials: "same-origin"});
-  if(!r.ok) throw new Error("HTTP "+r.status);
-  return await r.json();
-}
+(function(){
+  // ===== Utils =====
+  const $ = (sel) => document.querySelector(sel);
+  const fmtTime = (d=new Date()) => d.toTimeString().slice(0,5);
+  const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 
-function nowHHMM() {
-  const d = new Date();
-  const hh = String(d.getHours()).padStart(2,'0');
-  const mm = d.getMinutes();
-  const m = Math.ceil(mm/15)*15;
-  const adj = (m===60)? "00" : String(m).padStart(2,'0');
-  if(m===60 && hh!=="23"){ return String(Number(hh)+1).padStart(2,'0') + ":" + adj; }
-  if(m===60 && hh==="23"){ return "23:45"; }
-  return `${hh}:${adj}`;
-}
+  // 初期の開始時刻：直近の15分に丸め
+  (function setDefaultStart(){
+    const now = new Date();
+    const m = Math.ceil((now.getMinutes()+1) / 15) * 15;
+    if (m >= 60) { now.setHours(now.getHours()+1); now.setMinutes(0); }
+    else { now.setMinutes(m); }
+    $("#plan-start").value = fmtTime(now);
+  })();
 
-// ランキング描画
-function renderRanking(data){
-  const meta = document.getElementById('rank-meta');
-  meta.textContent = `曜:${data.dow} 時:${String(data.hour).padStart(2,'0')}:00`;
-  const wrap = document.getElementById('rank-list'); wrap.innerHTML = "";
-  data.ranking.slice(0,10).forEach((r, idx) => {
-    const a = document.createElement('div');
-    a.className = 'card'; a.style.padding = '10px';
-    a.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div style="display:flex;gap:8px;align-items:center;">
-          <div class="chip">#${idx+1}</div>
-          <div><div style="font-weight:700">${r.name}</div>
-               <div class="muted" style="font-size:12px">期待時給: 約${r.hourly}円/h・サンプル${r.samples_h}h</div></div>
-        </div>
-        <a class="btn" href="https://maps.google.com/?q=${r.lat},${r.lng}" target="_blank" rel="noopener">地図</a>
-      </div>`;
-    wrap.appendChild(a);
-  });
-}
-
-// ルート描画
-function renderPlan(data){
-  const wrap = document.getElementById('plan-list'); wrap.innerHTML = "";
-  if(!data.blocks || data.blocks.length===0){
-    wrap.innerHTML = `<div class="muted">データが少ないため、十分な精度で提案できません。過去の実績入力（エリア選択付き）をお願いします。</div>`;
-    return;
+  // 疑似ヒートの色（時給に比例して明るく）
+  function cellBg(v, vmin, vmax){
+    if (vmax <= vmin) return "linear-gradient(90deg, #1a2e5a 0%, #1a2e5a 100%)";
+    const p = (v - vmin) / (vmax - vmin);
+    const w = clamp(8 + Math.round(p * 92), 8, 100);
+    return `linear-gradient(90deg, rgba(76,201,240,.18) 0%, rgba(76,201,240,.18) ${w}%, rgba(28,45,87,.0) ${w}%)`;
   }
-  data.blocks.forEach(b => {
-    const el = document.createElement('div');
-    el.className = 'card'; el.style.padding = '10px';
-    el.innerHTML = `
-      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;">
-        <div>
-          <div style="font-weight:700">${b.time} — ${b.name}</div>
-          <div class="muted" style="font-size:12px">期待時給: 約${b.expected_hourly}円/h ・ サンプル${b.samples_h}h</div>
+
+  // ========== “いま稼げるエリア” ==========
+  async function loadHot(){
+    try{
+      const r = await fetch("/api/areas/stats/", {credentials:"same-origin"});
+      if(!r.ok) throw new Error("failed");
+      const j = await r.json();
+      const rows = j.ranking || [];
+      const vmax = rows.reduce((m,x)=>Math.max(m, x.hourly||0), 0);
+      const vmin = rows.reduce((m,x)=>Math.min(m, x.hourly||0), vmax);
+      $("#now-meta").textContent = `更新: ${new Date().toLocaleTimeString()} / サンプル最大: ${
+        rows.reduce((m,x)=>Math.max(m, x.samples_h||0), 0).toFixed(1)
+      }h`;
+
+      const hot = $("#hot-list");
+      hot.innerHTML = "";
+      if(rows.length === 0){
+        hot.innerHTML = `<div class="muted">データが不足しています。まずは実績を登録してください。</div>`;
+        return;
+      }
+      rows.slice(0, 20).forEach((r, idx) => {
+        const item = document.createElement("div");
+        item.className = "card";
+        item.style.background = "var(--panel)";
+        item.style.border = "1px solid var(--line)";
+        item.style.padding = "10px 12px";
+
+        const bar = document.createElement("div");
+        bar.style.height = "36px";
+        bar.style.borderRadius = "8px";
+        bar.style.background = cellBg(r.hourly, vmin, vmax);
+        bar.style.display = "flex";
+        bar.style.alignItems = "center";
+        bar.style.justifyContent = "space-between";
+        bar.style.padding = "0 10px";
+
+        const left = document.createElement("div");
+        left.innerHTML = `<strong style="opacity:.9">${idx+1}. ${r.name}</strong>
+          <span class="muted" style="margin-left:8px; font-size:12px">${r.samples_h}h</span>`;
+
+        const right = document.createElement("div");
+        right.innerHTML = `<span style="font-variant-numeric:tabular-nums">${r.hourly.toLocaleString()}</span> 円/h`;
+
+        bar.appendChild(left); bar.appendChild(right);
+        item.appendChild(bar);
+        hot.appendChild(item);
+      });
+    }catch(e){
+      $("#now-meta").textContent = "更新失敗";
+      console.error(e);
+    }
+  }
+
+  // ========== “今日のAIルート” ==========
+  async function generatePlan(){
+    const start = $("#plan-start").value || fmtTime();
+    const hours = $("#plan-hours").value || "4";
+    const beta  = $("#plan-beta").value || "120";
+    $("#plan-meta").textContent = "計算中…";
+    $("#plan-empty").style.display = "none";
+    $("#plan-list").innerHTML = "";
+
+    const url = `/api/areas/today_plan/?start=${encodeURIComponent(start)}&hours=${encodeURIComponent(hours)}&beta=${encodeURIComponent(beta)}`;
+    const r = await fetch(url, {credentials:"same-origin"});
+    if(!r.ok){
+      $("#plan-meta").textContent = "生成失敗";
+      return;
+    }
+    const j = await r.json();
+    const blocks = j.blocks || [];
+    if(blocks.length === 0){
+      $("#plan-meta").textContent = "候補なし";
+      $("#plan-empty").style.display = "block";
+      $("#plan-actions").style.display = "none";
+      return;
+    }
+
+    const ol = $("#plan-list");
+    blocks.forEach((b, i) => {
+      const li = document.createElement("li");
+      li.style.marginBottom = "10px";
+      li.innerHTML = `
+        <div class="row" style="align-items:center; justify-content:space-between">
+          <div>
+            <div><strong>${b.time}</strong> — ${b.name}</div>
+            <div class="muted" style="font-size:12px">期待時給 約 ${b.expected_hourly.toLocaleString()} 円 / サンプル ${b.samples_h}h</div>
+          </div>
+          <a class="btn ghost" href="/map" title="AIマップで位置を見る">地図</a>
         </div>
-        <a class="btn" href="https://maps.google.com/?q=${b.lat},${b.lng}" target="_blank" rel="noopener">この地点を地図で開く</a>
-      </div>`;
-    wrap.appendChild(el);
+      `;
+      ol.appendChild(li);
+    });
+    $("#plan-meta").textContent = `生成: ${new Date(j.generated_at).toLocaleTimeString()}`;
+    $("#plan-actions").style.display = "flex";
+  }
+
+  // ルート文面のコピー
+  $("#btn-copy-plan").addEventListener("click", async ()=>{
+    const items = Array.from(document.querySelectorAll("#plan-list li")).map(li => li.innerText.trim());
+    const text = "【今日のAIルート】\n" + items.map((t,i)=>`${i+1}. ${t}`).join("\n");
+    try{
+      await navigator.clipboard.writeText(text);
+      $("#plan-meta").textContent = "コピーしました";
+    }catch(e){
+      $("#plan-meta").textContent = "コピー失敗";
+    }
   });
-}
 
-async function refreshRanking(){
-  const now = new Date();
-  const data = await fetchJSON(`/api/areas/stats/?dow=${now.getDay()===0?6:now.getDay()-1}&hour=${now.getHours()}`);
-  renderRanking(data);
-}
-async function makePlan(){
-  const start = document.getElementById('plan-start').value || nowHHMM();
-  const hours = document.getElementById('plan-hours').value;
-  const beta = document.getElementById('plan-beta').value;
-  const data = await fetchJSON(`/api/areas/today_plan/?start=${encodeURIComponent(start)}&hours=${hours}&beta=${beta}`);
-  renderPlan(data);
-}
+  // イベント
+  $("#btn-generate").addEventListener("click", generatePlan);
+  $("#btn-refresh-now").addEventListener("click", loadHot);
 
-// 初期化
-document.addEventListener('DOMContentLoaded', async () => {
-  document.getElementById('plan-start').value = nowHHMM();
-  try { await refreshRanking(); } catch(e){ console.error(e); }
-  document.getElementById('btn-make-plan').addEventListener('click', makePlan);
-});
+  // 起動時と2分ごとに更新
+  loadHot();
+  setInterval(loadHot, 120000);
+
+  // ステータス行
+  (function tick(){
+    const now = new Date();
+    $("#status-line").textContent = `ローカル時刻 ${now.toLocaleString()} ／ ランキングは自動更新中`;
+    requestAnimationFrame(tick);
+  })();
+})();
 </script>
 {% endblock %}

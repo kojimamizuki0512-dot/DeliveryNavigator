@@ -129,7 +129,6 @@
       msgEl.textContent = "必須: " + errs.join(" / "); msgEl.style.color="#f99"; return;
     }
 
-    // payload
     const body = {
       date: date,
       orders_completed: Number(orders),
@@ -143,7 +142,13 @@
 
     const res = await fetch('/api/deliveries/', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRFToken': getCsrfToken(),       // ★ これが重要
+        'X-Requested-With': 'XMLHttpRequest' // おまじない
+      },
+      credentials: 'same-origin',             // Cookie を送る
       body: JSON.stringify(body)
     });
 
@@ -154,7 +159,8 @@
       await reloadRecent();
     }else{
       const j = await res.json().catch(()=>({}));
-      msgEl.textContent = "保存に失敗: " + (j.detail || res.statusText); msgEl.style.color="#f99";
+      msgEl.textContent = "保存に失敗: " + (j.detail || (j.errors?.join?.(', ') || res.statusText));
+      msgEl.style.color="#f99";
     }
   }
 

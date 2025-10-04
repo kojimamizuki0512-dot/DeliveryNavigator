@@ -1,154 +1,201 @@
 {% extends "base.html" %}
-{% block title %}実績入力 | Delivery Navigator{% endblock %}
-
-{% block header %}
-<h1 style="margin:6px 0 0 0">実績入力</h1>
-<p class="muted" style="margin:4px 0 0 0">日ごとの実績を登録します。ヒートマップ精度のため、開始/終了時刻も入れるのがおすすめ。</p>
-{% endblock %}
+{% load static %}
+{% block title %}データ入力（かんたん登録） — Delivery Navigator{% endblock %}
 
 {% block content %}
+<h1 style="font-weight:800;margin:8px 0 16px;">データ入力（かんたん登録）</h1>
+
 <div class="grid cols-2">
-  <div class="card">
-    <h3 style="margin:0 0 8px 0">新規追加</h3>
-    <form id="create" class="grid cols-2">
-      {% csrf_token %}
-      <div><label>日付</label><input type="date" name="date" required></div>
-      <div><label>件数</label><input type="number" name="orders_completed" min="0" value="0" required></div>
-      <div><label>売上(円)</label><input type="number" name="earnings" step="0.01" min="0" value="0" required></div>
-      <div><label>稼働時間(h)</label><input type="number" name="hours_worked" step="0.01" min="0" placeholder="例: 3.5"></div>
-      <div><label>開始</label><input type="time" name="start_time" step="900"></div>
-      <div><label>終了</label><input type="time" name="end_time" step="900"></div>
-      <div><button class="btn primary" type="submit">追加</button></div>
-    </form>
-  </div>
+  <section class="card">
+    <h3 style="margin:0 0 10px;">今日の実績を登録</h3>
 
-  <div class="card">
-    <h3 style="margin:0 0 8px 0">絞り込み & ツール</h3>
-    <form id="filter" class="grid cols-2">
-      <div><label>開始日</label><input type="date" name="start"></div>
-      <div><label>終了日</label><input type="date" name="end"></div>
-      <div class="row"><button class="btn" type="submit">この期間で表示</button><a class="btn ghost" href="/api/deliveries/export/">CSVエクスポート</a></div>
-    </form>
-    <p class="muted" style="margin:8px 0 0 0">件名をクリックで編集できます。</p>
-  </div>
-</div>
-
-<div class="card" style="margin-top:14px">
-  <div class="row" style="justify-content:space-between;align-items:center">
-    <h3 style="margin:0">登録済み</h3>
-    <span id="count" class="muted"></span>
-  </div>
-  <table style="margin-top:8px" id="tbl">
-    <thead>
-      <tr>
-        <th>日付</th><th>件数</th><th>売上(円)</th><th>時間</th><th>開始</th><th>終了</th><th>時給</th><th></th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-</div>
-
-<dialog id="dlg">
-  <form method="dialog" id="edit" class="grid cols-2" style="min-width:560px">
-    {% csrf_token %}
-    <h3 style="grid-column:1/-1;margin:0 0 6px 0">編集</h3>
-    <input type="hidden" name="id">
-    <div><label>日付</label><input type="date" name="date" required></div>
-    <div><label>件数</label><input type="number" name="orders_completed" min="0" required></div>
-    <div><label>売上(円)</label><input type="number" name="earnings" step="0.01" min="0" required></div>
-    <div><label>稼働時間(h)</label><input type="number" name="hours_worked" step="0.01" min="0"></div>
-    <div><label>開始</label><input type="time" name="start_time" step="900"></div>
-    <div><label>終了</label><input type="time" name="end_time" step="900"></div>
-    <div class="row" style="grid-column:1/-1;justify-content:flex-end;margin-top:6px">
-      <button class="btn" value="cancel">キャンセル</button>
-      <button class="btn primary" id="btn-save" value="default">保存</button>
+    <div class="row">
+      <div style="flex:1">
+        <label>日付（必須）</label>
+        <input id="f-date" type="date">
+      </div>
+      <div style="width:160px">
+        <label>プラットフォーム</label>
+        <select id="f-platform">
+          <option value="">未指定</option>
+          <option>Uber</option><option>Wolt</option><option>出前館</option>
+          <option>menu</option><option>ロケットナウ</option>
+        </select>
+      </div>
     </div>
-  </form>
-</dialog>
+
+    <div class="row">
+      <div style="width:140px">
+        <label>件数（必須）</label>
+        <input id="f-orders" type="number" min="0" step="1" placeholder="0">
+        <div class="muted" style="margin-top:4px">
+          <button class="btn" onclick="bump('f-orders',1)">+1</button>
+          <button class="btn" onclick="bump('f-orders',5)">+5</button>
+        </div>
+      </div>
+      <div style="width:180px">
+        <label>売上（必須・円）</label>
+        <input id="f-earn" type="number" min="0" step="100" placeholder="0">
+        <div class="muted" style="margin-top:4px">
+          <button class="btn" onclick="bump('f-earn',500)">+500</button>
+          <button class="btn" onclick="bump('f-earn',1000)">+1,000</button>
+        </div>
+      </div>
+      <div style="width:160px">
+        <label>稼働時間（h）</label>
+        <input id="f-hours" type="number" min="0" step="0.25" placeholder="例) 4.5">
+        <div class="muted" style="margin-top:4px">
+          <button class="btn" onclick="bumpFloat('f-hours',0.5)">+0.5h</button>
+          <button class="btn" onclick="bumpFloat('f-hours',1)">+1h</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div style="width:150px">
+        <label>開始</label>
+        <input id="f-start" type="time">
+      </div>
+      <div style="width:150px">
+        <label>終了</label>
+        <input id="f-end" type="time">
+      </div>
+      <div style="flex:1">
+        <label>配達エリア（必須ではないが推奨）</label>
+        <select id="f-area">
+          <option value="">未選択</option>
+        </select>
+        <div class="muted" style="font-size:12px;margin-top:4px">
+          エリアが未選択だとAI学習に使われない場合があります
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <label>メモ</label>
+      <input id="f-note" type="text" placeholder="混雑状況/天候など任意">
+    </div>
+
+    <div style="margin-top:12px">
+      <button class="btn primary" onclick="save()">保存する</button>
+      <span id="msg" class="muted" style="margin-left:8px"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3 style="margin:0 0 10px;">サマリー（今日）</h3>
+    <div id="summary" class="muted">未取得</div>
+    <h3 style="margin:16px 0 10px;">最近の登録</h3>
+    <div id="recent"></div>
+  </section>
+</div>
 
 <script>
-  function getCookie(n){const v=`; ${document.cookie}`.split(`; ${n}=`);if(v.length===2)return v.pop().split(';').shift();}
-  const yen=n=>(Math.round(+n)).toLocaleString('ja-JP');
-  const hourly=r=>{const h=parseFloat(r.hours_worked||0),e=parseFloat(r.earnings||0);return h?yen(e/h):""};
+  function todayStr(){
+    const d=new Date(); const m=String(d.getMonth()+1).padStart(2,'0'); const dd=String(d.getDate()).padStart(2,'0');
+    return `${d.getFullYear()}-${m}-${dd}`
+  }
+  document.getElementById('f-date').value = todayStr();
 
-  async function load(){
-    const f=new FormData(document.getElementById('filter'));const q=[];
-    if(f.get('start'))q.push('start='+encodeURIComponent(f.get('start')));
-    if(f.get('end'))q.push('end='+encodeURIComponent(f.get('end')));
-    const res=await fetch('/api/deliveries/'+(q.length?('?'+q.join('&')):'')); const data=await res.json();
-    const rows=Array.isArray(data)?data:(data.results||[]);
-    document.getElementById('count').textContent=`${rows.length}件`;
-    const tbody=document.querySelector('#tbl tbody'); tbody.innerHTML='';
-    rows.forEach(r=>{
-      const tr=document.createElement('tr');
-      tr.innerHTML=`
-        <td><button class="btn ghost btn-edit" data-id="${r.id}" title="クリックで編集">${r.date}</button></td>
-        <td>${r.orders_completed}</td>
-        <td>${r.earnings}</td>
-        <td>${r.hours_worked??''}</td>
-        <td>${r.start_time??''}</td>
-        <td>${r.end_time??''}</td>
-        <td>${hourly(r)}</td>
-        <td><button class="btn btn-del" data-id="${r.id}">削除</button></td>`;
-      tbody.appendChild(tr);
+  function bump(id, add){ const el=document.getElementById(id); el.value = String((parseInt(el.value||'0')||0)+add); }
+  function bumpFloat(id, add){ const el=document.getElementById(id); el.value = String(((parseFloat(el.value||'0')||0)+add).toFixed(2)); }
+
+  async function loadAreas(){
+    const res = await fetch('/api/areas/list/');
+    const js = await res.json(); const sel = document.getElementById('f-area');
+    (js.areas||[]).forEach(a=>{
+      const op = document.createElement('option');
+      op.value = a.slug; op.textContent = a.name; sel.appendChild(op);
     });
   }
 
-  document.getElementById('filter').addEventListener('submit',(e)=>{e.preventDefault();load();});
+  async function save(){
+    const date  = document.getElementById('f-date').value;
+    const orders= document.getElementById('f-orders').value;
+    const earn  = document.getElementById('f-earn').value;
+    const hours = document.getElementById('f-hours').value;
+    const start = document.getElementById('f-start').value;
+    const end   = document.getElementById('f-end').value;
+    const area  = document.getElementById('f-area').value;
+    const note  = document.getElementById('f-note').value || '';
+    const msgEl = document.getElementById('msg');
 
-  document.getElementById('create').addEventListener('submit',async(e)=>{
-    e.preventDefault();
-    const fd=new FormData(e.target);
-    const body={
-      date:fd.get('date'),
-      orders_completed:+(fd.get('orders_completed')||0),
-      earnings:fd.get('earnings'),
-      hours_worked:fd.get('hours_worked')||null,
-      start_time:fd.get('start_time')||null,
-      end_time:fd.get('end_time')||null
+    // 必須チェック
+    const errs = [];
+    if(!date) errs.push("日付");
+    if(orders==="" || Number(orders)<0) errs.push("件数");
+    if(earn==="" || Number(earn)<0) errs.push("売上");
+    if(errs.length){
+      msgEl.textContent = "必須: " + errs.join(" / "); msgEl.style.color="#f99"; return;
+    }
+
+    // payload
+    const body = {
+      date: date,
+      orders_completed: Number(orders),
+      earnings: Number(earn),
+      hours_worked: (hours===""? null : Number(hours)),
+      start_time: start || null,
+      end_time: end || null,
+      area_slug: area || null,
+      note: note
     };
-    const res=await fetch('/api/deliveries/',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')||''},
-      body:JSON.stringify(body)
+
+    const res = await fetch('/api/deliveries/', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
     });
-    if(!res.ok){alert('作成に失敗しました');return;}
-    e.target.reset(); load();
-  });
 
-  document.querySelector('#tbl').addEventListener('click',async(e)=>{
-    const btn=e.target.closest('button'); if(!btn)return; const id=btn.dataset.id;
-    if(btn.classList.contains('btn-del')){
-      if(!confirm('削除しますか？'))return;
-      const res=await fetch('/api/deliveries/'+id+'/',{method:'DELETE',headers:{'X-CSRFToken':getCookie('csrftoken')||''}});
-      if(!res.ok){alert('削除に失敗しました');return;} load(); return;
+    if(res.ok){
+      msgEl.textContent = "保存しました。"; msgEl.style.color="#9fe3a9";
+      document.getElementById('f-note').value="";
+      await reloadSummary();
+      await reloadRecent();
+    }else{
+      const j = await res.json().catch(()=>({}));
+      msgEl.textContent = "保存に失敗: " + (j.detail || res.statusText); msgEl.style.color="#f99";
     }
-    if(btn.classList.contains('btn-edit')){
-      const r=await (await fetch('/api/deliveries/'+id+'/',{headers:{'Accept':'application/json'}})).json();
-      const f=document.getElementById('edit'); document.getElementById('dlg').showModal();
-      f.id.value=r.id; f.date.value=r.date; f.orders_completed.value=r.orders_completed; f.earnings.value=r.earnings;
-      f.hours_worked.value=r.hours_worked??''; f.start_time.value=r.start_time??''; f.end_time.value=r.end_time??'';
-      document.getElementById('btn-save').onclick=async(ev)=>{
-        ev.preventDefault();
-        const body={
-          date:f.date.value,
-          orders_completed:+(f.orders_completed.value||0),
-          earnings:f.earnings.value,
-          hours_worked:f.hours_worked.value||null,
-          start_time:f.start_time.value||null,
-          end_time:f.end_time.value||null
-        };
-        const res2=await fetch('/api/deliveries/'+f.id.value+'/',{
-          method:'PUT',
-          headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')||''},
-          body:JSON.stringify(body)
-        });
-        if(!res2.ok){alert('更新に失敗しました');return;}
-        document.getElementById('dlg').close(); load();
-      };
-    }
-  });
+  }
 
-  load();
+  async function reloadSummary(){
+    const start = todayStr(); const end = todayStr();
+    const res = await fetch(`/api/deliveries/summary?start=${start}&end=${end}`);
+    const js = await res.json();
+    const el = document.getElementById('summary');
+    el.innerHTML = `
+      件数: <b>${js.total_orders||0}</b> 件 / 売上: <b>${Math.round(js.total_earnings||0)}</b> 円 /
+      稼働: <b>${(js.total_hours||0).toFixed(2)}</b> h / 時給: <b>${js.hourly_rate? Math.round(js.hourly_rate): '-'}</b> 円/h
+    `;
+  }
+
+  async function reloadRecent(){
+    const res = await fetch('/api/deliveries/?start=' + (new Date(Date.now()-14*86400000)).toISOString().slice(0,10));
+    const js = await res.json();
+    const el = document.getElementById('recent');
+    if(!js.length){ el.innerHTML = '<div class="muted">直近のデータはありません。</div>'; return; }
+    el.innerHTML = `
+      <table>
+        <thead><tr>
+          <th>日付</th><th>件数</th><th>売上</th><th>時間</th><th>開始</th><th>終了</th><th>エリア</th>
+        </tr></thead>
+        <tbody>
+        ${js.slice(0,10).map(r=>`
+          <tr>
+            <td>${r.date}</td><td>${r.orders_completed}</td>
+            <td>${Math.round(r.earnings)}</td><td>${r.hours_worked??'-'}</td>
+            <td>${r.start_time??'-'}</td><td>${r.end_time??'-'}</td>
+            <td>${r.area_name??(r.area_slug||'-')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  (async function boot(){
+    await loadAreas();
+    await reloadSummary();
+    await reloadRecent();
+  })();
 </script>
 {% endblock %}

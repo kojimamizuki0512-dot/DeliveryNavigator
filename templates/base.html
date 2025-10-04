@@ -9,8 +9,7 @@
   <style>
     :root{
       --bg:#0b162f; --panel:#0f1e3d; --card:#13244a; --ink:#e6edf3;
-      --muted:#9fb3c8; --line:#213259; --accent:#4cc9f0; --accent-2:#a0e8ff;
-      --ok:#2dd4bf; --warn:#fbbf24; --bad:#f87171
+      --muted:#9fb3c8; --line:#1f2e56; --accent:#4cc9f0; --accent-2:#a0e8ff;
     }
     *{box-sizing:border-box}
     html,body{height:100%}
@@ -22,27 +21,32 @@
     .brand{font-weight:800;letter-spacing:.2px}
     .nav ul{display:flex;gap:14px;list-style:none;margin:0;padding:0}
     .nav a.active{color:var(--accent)}
-    .btn{display:inline-flex;align-items:center;gap:6px;padding:.55rem .8rem;border-radius:10px;background:#1c2d57;color:#fff;border:1px solid #2b3d6a;cursor:pointer;transition:.15s}
-    .btn:hover{filter:brightness(1.05)}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:.56rem .84rem;border-radius:10px;background:#1c2d57;color:#fff;border:1px solid #2b3d6a;cursor:pointer;transition:.15s}
+    .btn:hover{filter:brightness(1.06)}
     .btn.primary{background:linear-gradient(135deg,#2b6cb0,#3182ce);border-color:#2b6cb0}
     .btn.ghost{background:transparent;border:1px solid var(--line)}
-    .chip{display:inline-block;padding:.2rem .5rem;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--muted)}
+    .chip{display:inline-block;padding:.22rem .56rem;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--muted)}
     .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
     .grid{display:grid;gap:12px}
     .grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
     .grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
-    @media (max-width:900px){.grid.cols-3{grid-template-columns:1fr}.grid.cols-2{grid-template-columns:1fr}}
+    @media (max-width:900px){.grid.cols-3,.grid.cols-2{grid-template-columns:1fr}}
     .muted{color:var(--muted)}
     footer{color:var(--muted);padding:26px 0;border-top:1px solid var(--line);margin-top:28px}
-    /* Table & form */
+    /* forms & tables */
     table{width:100%;border-collapse:collapse;border:1px solid var(--line);border-radius:12px;overflow:hidden}
     thead th{background:#11234a;color:#cfe3ff;text-align:left;padding:10px;border-bottom:1px solid var(--line)}
     tbody td{padding:10px;border-bottom:1px solid var(--line)}
     tbody tr:hover{background:#0e1f41}
-    input,select{width:100%;background:#0e1f41;border:1px solid var(--line);color:var(--ink);padding:.55rem .6rem;border-radius:10px}
+    input,select{width:100%;background:#0e1f41;border:1px solid var(--line);color:var(--ink);padding:.56rem .62rem;border-radius:10px}
     input:focus,select:focus{outline:2px solid #3059b4;outline-offset:1px}
     label{font-size:12px;color:#b7c6de}
     .row{display:flex;gap:10px;flex-wrap:wrap}
+
+    /* hero helper */
+    .hero{position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--line)}
+    .hero-img{min-height:280px;background-size:cover;background-position:center;filter:brightness(.70)}
+    .hero-overlay{position:absolute;inset:0;display:flex;align-items:center;background:linear-gradient(0deg,rgba(6,12,24,.55),rgba(6,12,24,.20))}
   </style>
 </head>
 <body>

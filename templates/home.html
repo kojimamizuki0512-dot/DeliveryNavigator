@@ -3,13 +3,9 @@
 {% block title %}ホーム | Delivery Navigator{% endblock %}
 
 {% block header %}
-<section style="position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--line);">
-  <div style="
-      background-image:url('{% static 'img/home-hero.jpg' %}');
-      background-size:cover;background-position:center;
-      min-height:260px;filter:brightness(.72);">
-  </div>
-  <div style="position:absolute;inset:0;display:flex;align-items:center">
+<section class="hero">
+  <div class="hero-img" style="background-image:url('{% static 'img/home-hero.png' %}');"></div>
+  <div class="hero-overlay">
     <div style="padding:24px">
       <div class="chip">あなたの稼ぎを可視化</div>
       <h1 style="margin:8px 0 6px 0;font-size:28px;font-weight:800">Delivery Navigator</h1>
@@ -25,7 +21,6 @@
 {% endblock %}
 
 {% block content %}
-
 <div class="grid cols-3" style="margin-top:16px">
   <div class="card">
     <h3 style="margin:0 0 4px 0">クイックアクション</h3>

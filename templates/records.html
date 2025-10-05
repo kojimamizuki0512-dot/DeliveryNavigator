@@ -3,13 +3,13 @@
 {% block content %}
 <section class="panel">
   <h2>最近の記録</h2>
-  <p class="muted">サンプルの一覧。今は静的データです。</p>
-  <div style="overflow:auto;">
-    <table style="width:100%; border-collapse:collapse;">
+  <p class="muted">サンプル一覧（静的データ）。</p>
+  <div style="overflow:auto">
+    <table style="width:100%;border-collapse:collapse">
       <thead>
-        <tr><th style="text-align:left; padding:8px; border-bottom:1px solid var(--border);">日時</th>
-            <th style="text-align:left; padding:8px; border-bottom:1px solid var(--border);">エリア</th>
-            <th style="text-align:left; padding:8px; border-bottom:1px solid var(--border);">メモ</th></tr>
+        <tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">日時</th>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">エリア</th>
+            <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">メモ</th></tr>
       </thead>
       <tbody id="recTbody"></tbody>
     </table>
@@ -20,9 +20,9 @@
     const tb = document.getElementById('recTbody');
     const recs = DN_DATA.records || [];
     tb.innerHTML = recs.map(r=>`<tr>
-      <td style="padding:8px; border-bottom:1px solid var(--border);">${r.dt}</td>
-      <td style="padding:8px; border-bottom:1px solid var(--border);">${r.area}</td>
-      <td style="padding:8px; border-bottom:1px solid var(--border);">${r.note||''}</td>
+      <td style="padding:8px;border-bottom:1px solid var(--border)">${r.dt}</td>
+      <td style="padding:8px;border-bottom:1px solid var(--border)">${r.area}</td>
+      <td style="padding:8px;border-bottom:1px solid var(--border)">${r.note||''}</td>
     </tr>`).join('');
   })();
 </script>

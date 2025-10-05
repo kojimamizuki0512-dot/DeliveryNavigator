@@ -3,11 +3,9 @@
 {% block content %}
 <section class="panel">
   <h2>データ読み込み</h2>
-  <p class="muted">アプリやスクショの読み込みはここから。今は見た目だけです（送信先は無し）。</p>
-  <form onsubmit="event.preventDefault(); alert('サンプルです');" style="display:grid; gap:12px; max-width:520px;">
-    <label>画像またはCSV
-      <input type="file" accept=".png,.jpg,.jpeg,.csv" />
-    </label>
+  <p class="muted">スクショやCSVを入れる場所（今は見た目のみ）。</p>
+  <form onsubmit="event.preventDefault(); alert('サンプルです');" style="display:grid;gap:12px;max-width:520px">
+    <label>画像またはCSV<input type="file" accept=".png,.jpg,.jpeg,.csv" /></label>
     <button class="btn btn-primary">読み込む</button>
   </form>
 </section>

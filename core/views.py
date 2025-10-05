@@ -5,6 +5,7 @@ import csv
 import shutil
 import datetime
 import os
+import logging
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.http import HttpResponse, JsonResponse
@@ -38,10 +39,12 @@ from .serializers import (
     OcrImportInputSerializer,
 )
 
+logger = logging.getLogger(__name__)
+
 # ---------- ユーティリティ ----------
 
 def _ensure_tesseract_path():
-    """Windowsで tesseract.exe の場所を設定（settings優先 → 代表的パス → PATH）"""
+    """OSごとの代表パスを探して pytesseract を有効化（settings優先 → 代表的パス → PATH）"""
     if shutil.which("tesseract"):
         return
     try:
@@ -53,23 +56,29 @@ def _ensure_tesseract_path():
     except Exception:
         pass
     for guess in [
+        # Linux
+        "/usr/bin/tesseract",
+        "/usr/local/bin/tesseract",
+        # Windows
         r"C:\Program Files\Tesseract-OCR\tesseract.exe",
         r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
     ]:
         if os.path.exists(guess):
             pytesseract.pytesseract.tesseract_cmd = guess
             return
-    # 見つからない場合は pytesseract 側で例外が発生
+    # 見つからない場合は pytesseract 側で例外が発生する
+
 
 def _ocr_image_to_text(image_bytes: bytes):
     """
     可能なら Google Vision、だめなら Tesseract にフォールバック。
-    戻り値: (text, provider)  provider は "google-vision" or "tesseract"
+    成功: (text:str, provider:str)  provider は "google-vision" | "tesseract"
+    失敗: (None, None)
     """
     # --- 1) Google Vision ---
     try:
         if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-            from google.cloud import vision  # 遅延import
+            from google.cloud import vision  # 遅延 import
             client = vision.ImageAnnotatorClient()
             gimg = vision.Image(content=image_bytes)
             resp = client.text_detection(image=gimg)
@@ -77,32 +86,26 @@ def _ocr_image_to_text(image_bytes: bytes):
                 raise RuntimeError(resp.error.message)
             if resp.text_annotations:
                 return resp.text_annotations[0].description, "google-vision"
-    # 置換前
-    except Exception:
-    # Vision が使えない・失敗 → Tesseract に落ちる
-     pass
-
-# 置換後
     except Exception as e:
-     import logging
-    logging.getLogger(__name__).warning("Vision fallback: %s", e)
-    # Vision が使えない・失敗 → Tesseract に落ちる
-    pass
+        logger.warning("Vision fallback: %s", e)
 
     # --- 2) Tesseract ---
-    _ensure_tesseract_path()
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    cfg = "--psm 6"
     try:
-        return pytesseract.image_to_string(img, lang="jpn+eng", config=cfg), "tesseract"
-    except Exception:
-        return pytesseract.image_to_string(img, lang="eng", config=cfg), "tesseract"
+        _ensure_tesseract_path()
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        cfg = "--psm 6"
+        try:
+            return pytesseract.image_to_string(img, lang="jpn+eng", config=cfg), "tesseract"
+        except Exception:
+            return pytesseract.image_to_string(img, lang="eng", config=cfg), "tesseract"
+    except Exception as e:
+        logger.error("Tesseract OCR failed: %s", e)
+
+    return None, None
 
 
 def _parse_numbers(text: str):
-    """
-    OCR文字列から ゆるく数値を拾う（無ければ None）
-    """
+    """OCR文字列から ゆるく数値を拾う（無ければ None）"""
     norm = text.replace("：", ":").replace("　", " ")
 
     # 日付
@@ -168,8 +171,7 @@ def _parse_numbers(text: str):
 def _parse_times(text: str):
     """
     OCR文字列から start/end の候補を抜く。
-    例:
-      10:00-14:30 / 10:00 ~ 14:30 / 10時〜14時 / Start: 10:00 End: 14:30
+    例: 10:00-14:30 / 10:00 ~ 14:30 / 10時〜14時 / Start: 10:00 End: 14:30
     """
     norm = (
         text.replace("：", ":")
@@ -181,13 +183,13 @@ def _parse_times(text: str):
 
     candidates = []
 
-    # hh:mm を順番に拾う
+    # hh:mm
     for hh, mm in re.findall(r"(\d{1,2}):(\d{2})", norm):
         h, m = int(hh), int(mm)
         if 0 <= h < 24 and 0 <= m < 60:
             candidates.append(datetime.time(h, m))
 
-    # 日本語の「10時30分」/「10時」
+    # 日本語「10時30分」「10時」
     for hh, mm in re.findall(r"(\d{1,2})\s*時\s*(\d{1,2})?\s*分?", norm):
         h = int(hh)
         m = int(mm) if mm else 0
@@ -497,6 +499,18 @@ class OcrImportView(generics.GenericAPIView):
 
         data = image.read()
         raw_text, provider = _ocr_image_to_text(data)
+
+        if not raw_text or not str(raw_text).strip():
+            # 500で落とさず、ユーザーに分かる形で返す
+            job = OcrImport(user=request.user, status="failed")
+            job.image.save(image.name, ContentFile(data))
+            job.message = "OCRバックエンドが利用できないか、テキストを抽出できませんでした。"
+            job.save()
+            return Response(
+                {"detail": job.message, "provider": provider},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         parsed = _parse_numbers(raw_text)
         p_start, p_end = _parse_times(raw_text)
 
@@ -515,9 +529,7 @@ class OcrImportView(generics.GenericAPIView):
         if (start_time is not None) and (end_time is None) and (hours_val is not None):
             end_time = _add_hours_to_time(start_time, float(hours_val))
         elif (end_time is not None) and (start_time is None) and (hours_val is not None):
-            # end - hours → start
-            back = _add_hours_to_time(end_time, -float(hours_val))
-            start_time = back
+            start_time = _add_hours_to_time(end_time, -float(hours_val))
 
         # hours が無ければ、start/end から逆算
         if (hours_val is None) and (start_time is not None) and (end_time is not None):
@@ -579,8 +591,6 @@ class OcrImportView(generics.GenericAPIView):
             if "end_time" not in updated_fields:
                 updated_fields.append("end_time")
 
-        # モデルに area_slug / area_name フィールドがある場合のみ反映
-        # （なければ無視される）
         if hasattr(rec, "area_slug") and area_slug:
             rec.area_slug = area_slug
             updated_fields.append("area_slug")
@@ -622,8 +632,7 @@ class OcrImportView(generics.GenericAPIView):
 class AreasListView(LoginRequiredMixin, View):
     """
     GET /api/areas/
-    core/areas.py の AREAS（静的 or 途中までの仮データ）を返すだけの最小実装。
-    将来はDB/推論スコアをここに載せる。
+    core/areas.py の AREAS を返すだけの最小実装。将来はDB/推論スコアをここに載せる。
     """
     login_url = '/login/'
 
@@ -638,7 +647,7 @@ class AreasListView(LoginRequiredMixin, View):
 class AreasStatsView(APIView):
     """
     GET /api/areas/stats/?hour=15&top=3
-    ひとまず公開GETで返すダミー実装（集計ロジックは後で実データに差し替え）。
+    ひとまず公開GETで返すダミー実装（集計ロジックは後で差し替え）。
     """
     permission_classes = [permissions.AllowAny]
     authentication_classes = []

@@ -1,27 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /app
+echo "[entrypoint] start"
 
+# --- Google Vision の鍵を /app/vision-sa.json に書き出す ---
+if [[ -n "${VISION_SA_JSON_B64:-}" ]]; then
+  echo "$VISION_SA_JSON_B64" | base64 -d > /app/vision-sa.json
+  chmod 600 /app/vision-sa.json
+  echo "[entrypoint] wrote /app/vision-sa.json from base64"
+elif [[ -n "${VISION_SA_JSON:-}" ]]; then
+  printf "%s" "$VISION_SA_JSON" > /app/vision-sa.json
+  chmod 600 /app/vision-sa.json
+  echo "[entrypoint] wrote /app/vision-sa.json"
+fi
+
+# --- Django 標準の起動手順 ---
 echo "[entrypoint] migrate..."
 python manage.py migrate --noinput
 
 echo "[entrypoint] collectstatic..."
 python manage.py collectstatic --noinput
 
-# optional: 一度だけ実行したい manage.py コマンド
-if [[ -n "${RUN_MANAGE_CMD:-}" ]]; then
-  echo "[entrypoint] RUN_MANAGE_CMD=${RUN_MANAGE_CMD}"
-  python manage.py ${RUN_MANAGE_CMD} || true
-  export RUN_MANAGE_CMD=""
-fi
-
-# ★ ここが今回のポイント：MEDIA_ROOT を作る
-mkdir -p "${MEDIA_ROOT:-/tmp/dn_media}"
-
 echo "[entrypoint] gunicorn start"
-exec gunicorn config.wsgi:application \
-  --bind 0.0.0.0:${PORT:-8000} \
-  --workers ${GUNICORN_WORKERS:-3} \
-  --threads ${GUNICORN_THREADS:-3} \
-  --timeout ${GUNICORN_TIMEOUT:-60}
+gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --threads 3

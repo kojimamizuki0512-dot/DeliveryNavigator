@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 set -e
 
-# 必要なら Vision 用のJSONを展開
+# Koyeb側で別の設定が刺さっていても、無ければ config.settings を使う
+export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-config.settings}"
+
+# （必要な人だけ）Vision SA JSON を展開
 if [ -n "$VISION_SA_JSON" ]; then
   echo "$VISION_SA_JSON" > /app/vision-sa.json
 fi
 
-# 静的ファイルを集める（これが無いと本番でCSSが出ません）
+# 静的ファイルとDB
 python manage.py collectstatic --noinput
-
-# マイグレーション（必要なら。既にやっているなら残してOK）
 python manage.py migrate --noinput || true
 
 # 起動

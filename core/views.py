@@ -77,9 +77,17 @@ def _ocr_image_to_text(image_bytes: bytes):
                 raise RuntimeError(resp.error.message)
             if resp.text_annotations:
                 return resp.text_annotations[0].description, "google-vision"
+    # 置換前
     except Exception:
-        # Vision が使えない・失敗 → Tesseract に落ちる
-        pass
+    # Vision が使えない・失敗 → Tesseract に落ちる
+     pass
+
+# 置換後
+    except Exception as e:
+     import logging
+    logging.getLogger(__name__).warning("Vision fallback: %s", e)
+    # Vision が使えない・失敗 → Tesseract に落ちる
+    pass
 
     # --- 2) Tesseract ---
     _ensure_tesseract_path()

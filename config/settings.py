@@ -18,7 +18,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
-    "corsheaders",  # ← 追加
+    "corsheaders",
     "core",
 ]
 
@@ -26,7 +26,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
-    "corsheaders.middleware.CorsMiddleware",   # ← CommonMiddleware より前
+    "corsheaders.middleware.CorsMiddleware",   # ← Common より前
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -56,13 +56,21 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# DB
+# ===== DB（DATABASE_URL があれば Postgres、無ければ SQLite）=====
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
     }
 }
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL:
+    import dj_database_url
+    DATABASES["default"] = dj_database_url.config(
+        default=DATABASE_URL,
+        conn_max_age=int(os.getenv("DB_CONN_MAX_AGE", "60")),
+        ssl_require=os.getenv("DB_SSL_REQUIRE", "1").lower() == "1",
+    )
 
 LANGUAGE_CODE = "ja"
 TIME_ZONE = "Asia/Tokyo"
@@ -74,8 +82,8 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]  # 任意。core/static は自動検出
 
-# WhiteNoise（まずは安全モード。安定したら FORCE_STATIC_MANIFEST=1 で切替）
-if os.getenv("FORCE_STATIC_MANIFEST", "0") == "1":
+# WhiteNoise（まずは安全モード。安定後に FORCE_STATIC_MANIFEST=1 で切替）
+if os.getenv("FORCE_STATIC_MANIFEST", "0").lower() == "1":
     STORAGES = {
         "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"}
     }
@@ -92,7 +100,7 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
 }
 
-# CORS（とりあえず全部許可。必要に応じて限定してOK）
+# CORS（まずは全許可。必要なら限定へ）
 CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "True").lower() == "true"
-# 限定したいときは下を使う（カンマ区切りで指定）
+# 限定したいときは：
 # CORS_ALLOWED_ORIGINS = [u for u in os.getenv("CORS_ALLOWED_ORIGINS","").split(",") if u]

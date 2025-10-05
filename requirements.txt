@@ -5,3 +5,4 @@ Pillow>=10.0
 pytesseract>=0.3.10
 dj-database-url>=2.2
 django-cors-headers>=4.4
+psycopg[binary]>=3.1

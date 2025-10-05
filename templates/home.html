@@ -11,16 +11,30 @@
     <div id="map" style="width:100%; height:70vh;"></div>
   </section>
 
-  <!-- 右：今すぐ3エリア + 補助 -->
+  <!-- 右：瞬間3エリア提案（今すぐ/30分後/1時間後） -->
   <section class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;">
-      <h3 style="margin:0">今すぐの3エリア</h3>
+      <h3 style="margin:0">瞬間3エリア提案</h3>
       <div class="muted" id="now-hour">--:--</div>
     </div>
-    <div id="top-cards" style="margin-top:8px"></div>
+
+    <div style="margin-top:8px">
+      <div class="chip">今すぐ</div>
+      <div id="slot-now" style="margin-top:6px"></div>
+    </div>
+
+    <div style="margin-top:14px">
+      <div class="chip">30分後</div>
+      <div id="slot-30" style="margin-top:6px"></div>
+    </div>
+
+    <div style="margin-top:14px">
+      <div class="chip">1時間後</div>
+      <div id="slot-60" style="margin-top:6px"></div>
+    </div>
 
     <div class="muted" style="margin-top:16px;font-size:12px">
-      提示は統計ベース（直近データ）。「直近◎」は過去7日で好調だったエリアです。
+      理由は「実績◎（直近7日で上位）／移動少（現在地から近い）／密度高（サンプル時間が多い）」で表示します。
     </div>
   </section>
 </div>
@@ -33,18 +47,18 @@
 
 <script>
 let map, markersLayer, labelsLayer;
+let userPos = null; // 現在地（あれば「移動少」を判定）
 
-// グラデーション（低→高）
+// ---- 地図色＆ラベル ----
 function colorFor(yen){
-  // 0〜max をざっくり。p90などはAPI側で調整済み想定、ここは簡易。
-  const v = Math.max(0, Math.min(1, (yen || 0) / 3000)); // 0〜3,000円/h を 0..1 に
+  // 0〜3000円/h を 0..1 に正規化（暫定）
+  const v = Math.max(0, Math.min(1, (yen || 0) / 3000));
   const r = Math.floor(255 * v);
   const g = Math.floor(200 * v);
   const b = Math.floor(255 * (1 - v));
   return `rgb(${r},${g},${b})`; // 青→赤寄り
 }
 
-// 数字ラベル（円/h）
 function makeLabelHtml(yen){
   return `<div style="
     background: rgba(0,0,0,0.55);
@@ -52,62 +66,134 @@ function makeLabelHtml(yen){
   ">${Math.round(yen)}<span style="font-size:10px;margin-left:2px">円/h</span></div>`;
 }
 
+// ---- 時刻表示 ----
 function setNowHour(){
   const d = new Date();
   document.getElementById('now-hour').textContent =
-    `${String(d.getHours()).padStart(2,'0')}:00`;
+    `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
-async function loadStats(){
-  setNowHour();
-  const res = await fetch('/api/areas/stats?top=3', {credentials:'same-origin'});
+// ---- 距離（km） ----
+function haversineKm(lat1, lon1, lat2, lon2){
+  const R = 6371;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2-lat1);
+  const dLon = toRad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+
+// ---- 理由タグ作成 ----
+function buildReasons(item){
+  const reasons = [];
+  if(item.recent_hot) reasons.push('実績◎');
+  if(typeof item.hours === 'number' && item.hours >= 2) reasons.push('密度高');
+  if(userPos && item.lat!=null && item.lng!=null){
+    const d = haversineKm(userPos.lat, userPos.lng, item.lat, item.lng);
+    if(d <= 1.5) reasons.push('移動少');
+  }
+  return reasons.slice(0,2).join(' / ');
+}
+
+// ---- マップ更新（現在の時間スロット可視化） ----
+async function loadMapForCurrentHour(){
+  const now = new Date();
+  const h = now.getHours();
+  const res = await fetch(`/api/areas/stats?hour=${h}`, {credentials:'same-origin'});
   const js = await res.json();
 
-  // 地図に反映（色＋数字）
   markersLayer.clearLayers();
   labelsLayer.clearLayers();
+
   (js.items||[]).forEach(it=>{
     if(it.lat==null || it.lng==null) return;
     const c = colorFor(it.hourly);
-    const circle = L.circleMarker([it.lat, it.lng], {
+    L.circleMarker([it.lat, it.lng], {
       radius: 18, weight: 2, color: c, fillColor: c, fillOpacity: 0.35
     }).addTo(markersLayer).bindTooltip(`${it.name} / 約${Math.round(it.hourly)}円/h`);
 
     const divIcon = L.divIcon({html: makeLabelHtml(it.hourly), className: '', iconSize: [60,24]});
     L.marker([it.lat, it.lng], {icon: divIcon}).addTo(labelsLayer);
   });
+}
 
-  // 右ペイン：今すぐ3エリアカード
-  const box = document.getElementById('top-cards');
-  box.innerHTML = (js.top||[]).map(it => `
-    <div class="card" style="margin:10px 0;padding:12px; display:flex; align-items:center; justify-content:space-between;">
+// ---- 瞬間3エリア（今/30分後/1時間後） ----
+function calcHorizonHours(){
+  const d = new Date();
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const h0  = h;                        // 今すぐ
+  const h30 = (m < 30 ? h : h+1) % 24;  // 30分後 → 近い時間スロット
+  const h60 = (m < 30 ? h+1 : h+2) % 24; // 1時間後
+  return {h0, h30, h60};
+}
+
+async function fetchTop1(hour){
+  const res = await fetch(`/api/areas/stats?top=1&hour=${hour}`, {credentials:'same-origin'});
+  if(!res.ok) return null;
+  const js = await res.json();
+  return (js.top && js.top.length) ? js.top[0] : null;
+}
+
+function renderSlot(elId, item){
+  const el = document.getElementById(elId);
+  if(!item){
+    el.innerHTML = `<div class="card muted">データ不足です</div>`;
+    return;
+  }
+  const reasons = buildReasons(item);
+  el.innerHTML = `
+    <div class="card" style="margin:8px 0; padding:12px; display:flex; align-items:center; justify-content:space-between;">
       <div>
-        <div style="font-weight:700">${it.name}
-          ${it.recent_hot ? '<span class="chip" style="margin-left:6px;background:#3b5c1a;color:#c8f5a2;border-color:#527c2a">直近◎</span>' : ''}
+        <div style="font-weight:700">${item.name}
+          ${item.recent_hot ? '<span class="chip" style="margin-left:6px;background:#3b5c1a;color:#c8f5a2;border-color:#527c2a">実績◎</span>' : ''}
         </div>
-        <div class="muted" style="font-size:12px">約 ${Math.round(it.hourly)} 円 / h ・ サンプル ${it.hours} h</div>
+        <div class="muted" style="font-size:12px">約 ${Math.round(item.hourly)} 円/h ・ サンプル ${item.hours} h</div>
+        ${reasons ? `<div style="font-size:12px;margin-top:4px">${reasons}</div>` : ''}
       </div>
-      ${it.lat!=null && it.lng!=null ? `<button class="btn" onclick="fly(${it.lat},${it.lng})">ズーム</button>` : ''}
+      ${item.lat!=null && item.lng!=null ? `<button class="btn" onclick="fly(${item.lat},${item.lng})">ズーム</button>` : ''}
     </div>
-  `).join('');
+  `;
 }
 
+async function loadHorizonCards(){
+  const {h0, h30, h60} = calcHorizonHours();
+  const [i0, i30, i60] = await Promise.all([fetchTop1(h0), fetchTop1(h30), fetchTop1(h60)]);
+  renderSlot('slot-now', i0);
+  renderSlot('slot-30', i30);
+  renderSlot('slot-60', i60);
+}
+
+// ---- 地図操作 ----
 function fly(lat,lng){
-  map.flyTo([lat,lng], 15, {duration: 0.7});
+  map.flyTo([lat,lng], 15, {duration: 0.7}); // KPI: 1秒以内にズーム完了
 }
 
+// ---- 現在地取得（任意） ----
+function initGeolocation(){
+  if(!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    pos => { userPos = {lat: pos.coords.latitude, lng: pos.coords.longitude}; },
+    _err => {}, {enableHighAccuracy:true, timeout:5000}
+  );
+}
+
+// ---- 起動 ----
 (function boot(){
+  setNowHour();
   map = L.map('map', {zoomControl:true}).setView([35.68,139.76], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19, attribution: '&copy; OpenStreetMap'
   }).addTo(map);
-
   markersLayer = L.layerGroup().addTo(map);
   labelsLayer = L.layerGroup().addTo(map);
 
-  loadStats();
-  // 5分ごとに更新（任意）
-  setInterval(loadStats, 5*60*1000);
+  initGeolocation();
+  loadMapForCurrentHour();
+  loadHorizonCards();
+
+  // 5分ごとに更新
+  setInterval(()=>{ setNowHour(); loadMapForCurrentHour(); loadHorizonCards(); }, 5*60*1000);
 })();
 </script>
 {% endblock %}

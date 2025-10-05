@@ -30,6 +30,6 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("healthz", lambda r: HttpResponse("ok"), name="healthz"),
 
-    # --- API（DRF） ---
+    # --- API（将来用） ---
     path("api/", include("core.urls")),
 ]

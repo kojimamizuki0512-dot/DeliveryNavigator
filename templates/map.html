@@ -1,115 +1,47 @@
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Delivery Navigator - 入口マップ</title>
-  <!-- Leaflet（地図） -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+{% extends 'base.html' %}
+{% block title %}マップ | Delivery Navigator{% endblock %}
+{% block extra_head %}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <style>
-    :root{--bg:#f5f6f8;--card:#fff;--text:#222;--muted:#666;--shadow:0 2px 12px rgba(0,0,0,.08);--round:14px}
-    body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;margin:0;background:var(--bg);color:var(--text)}
-    .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
-    .title{font-size:22px;font-weight:700;margin:4px 0 12px}
-    .toolbar{display:flex;gap:8px;align-items:center;margin:8px 0 16px;flex-wrap:wrap}
-    .toolbar input{padding:6px 8px;border-radius:8px;border:1px solid #ddd;background:#fff}
-    .toolbar button{padding:8px 14px;border-radius:10px;border:0;background:#0ea5e9;color:#fff;box-shadow:var(--shadow);cursor:pointer}
-    #map{height:68vh;border-radius:16px;box-shadow:var(--shadow)}
-    .popup{max-width:260px}
-    .popup img{max-width:100%;border-radius:8px;margin-top:6px}
-    .muted{color:#666;font-size:13px}
+    .map-wrap{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px; }
+    #mapFull{ width:100%; height:72vh; border-radius:var(--radius); }
+    .legend{ display:inline-flex; gap:8px; align-items:center; margin:8px 0 12px; }
+    .legend-item{ border-radius:999px; padding:6px 12px; font-size:12px; border:1px solid var(--border); }
+    .legend-low{  background:repeating-linear-gradient(45deg,#e5e7eb,#e5e7eb 6px,#f8fafc 6px,#f8fafc 12px); color:#374151; }
+    .legend-mid{  background:repeating-linear-gradient(45deg,#f6e9d4,#f6e9d4 6px,#fff3e0 6px,#fff3e0 12px); color:#8a5a18; }
+    .legend-high{ background:repeating-linear-gradient(45deg,#d8f3dc,#d8f3dc 6px,#c7f6e2 6px,#c7f6e2 12px); color:#065f46; }
   </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="title">入口マップ</div>
-
-    <div class="toolbar">
-      <input id="q" type="text" placeholder="住所・メモで検索（例：渋谷, 右の通用口）" style="min-width:260px;">
-      <button id="btn">検索</button>
-      <span class="muted">※ 先に /admin にログインしておくと確実です</span>
-    </div>
-
-    <div id="map"></div>
+{% endblock %}
+{% block content %}
+<div class="map-wrap">
+  <div class="legend" aria-label="凡例">
+    <span class="legend-item legend-low">低</span>
+    <span class="legend-item legend-mid">中</span>
+    <span class="legend-item legend-high">高</span>
   </div>
+  <div id="mapFull"></div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+  const WARD_POS = DN_DATA.ward_pos || {};
+  const levelColor = (w)=> (w>=1800 ? '#18a058' : (w>=1600 ? '#c4852e' : '#9ca3af'));
+  const centerTokyo = [35.681236,139.767125];
+  const map = L.map('mapFull').setView(centerTokyo, 12);
+  const light = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{ attribution:'&copy; OpenStreetMap & Carto', maxZoom:19 }).addTo(map);
 
-  <script>
-    // 地図の用意（東京駅あたりを仮の中心）
-    const map = L.map('map', { zoomControl: true }).setView([35.681, 139.767], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, attribution: '&copy; OpenStreetMap'
-    }).addTo(map);
-
-    let markers = []; // 再描画用
-
-    function clearMarkers(){
-      for(const m of markers){ map.removeLayer(m); }
-      markers = [];
-    }
-
-    function toAbs(url){
-      // DRFは /media/... を返すので、絶対URLに変換
-      if(!url) return null;
-      if(url.startsWith('http')) return url;
-      return `${location.origin}${url}`;
-    }
-
-    async function loadEntrances(query){
-      const url = query ? `/api/entrances/?q=${encodeURIComponent(query)}`
-                        : `/api/entrances/`;
-      const res = await fetch(url, {credentials:'same-origin'});
-      if(!res.ok){
-        alert('読み込みに失敗しました。先に /admin へログインしてください。');
-        return;
-      }
-      const items = await res.json();
-      clearMarkers();
-
-      const bounds = L.latLngBounds();
-      let hasPoint = false;
-
-      for(const e of items){
-        if(e.latitude == null || e.longitude == null) continue;
-        const lat = parseFloat(e.latitude), lng = parseFloat(e.longitude);
-        const marker = L.marker([lat, lng]).addTo(map);
-        markers.push(marker);
-
-        const p1 = toAbs(e.photo1), p2 = toAbs(e.photo2), p3 = toAbs(e.photo3);
-        let html = `<div class="popup"><b>${e.address ?? '(住所未設定)'}</b>`;
-        if(e.note){ html += `<div class="muted">${e.note}</div>`; }
-        if(p1){ html += `<img src="${p1}" alt="photo1">`; }
-        if(p2){ html += `<img src="${p2}" alt="photo2">`; }
-        if(p3){ html += `<img src="${p3}" alt="photo3">`; }
-        html += `</div>`;
-        marker.bindPopup(html);
-
-        bounds.extend([lat, lng]);
-        hasPoint = true;
-      }
-
-      if(hasPoint){
-        map.fitBounds(bounds.pad(0.15));
-      }else{
-        map.setView([35.681, 139.767], 12); // 何もなければ東京駅へ
-      }
-    }
-
-    // 初回
-    loadEntrances();
-
-    // 検索
-    document.getElementById('btn').addEventListener('click', ()=>{
-      const q = document.getElementById('q').value.trim();
-      loadEntrances(q);
-    });
-
-    // Enterキーでも検索
-    document.getElementById('q').addEventListener('keydown', (e)=>{
-      if(e.key === 'Enter'){ document.getElementById('btn').click(); }
-    });
-  </script>
-</body>
-</html>
+  const markers=[];
+  (DN_DATA.areas || []).forEach(it=>{
+    const name = it.area || 'エリア';
+    const wage = Number(it.wage_per_h || 0);
+    const center = Array.isArray(it.center)&&it.center.length===2 ? it.center : (WARD_POS[name]||null);
+    if (!center) return;
+    const color = levelColor(wage);
+    const m = L.circleMarker(center,{ radius:10,color,fillColor:color,fillOpacity:.6,weight:2 }).addTo(map);
+    m.bindPopup(`<strong>${name}</strong><br>${wage?`目安：¥${wage}/h`:'目安：—'}`);
+    markers.push(m);
+  });
+  if (markers.length) map.fitBounds(L.featureGroup(markers).getBounds().pad(0.2));
+</script>
+{% endblock %}

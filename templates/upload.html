@@ -1,49 +1,14 @@
-{% extends "base.html" %}
-{% block title %}データ取込（OCR） | Delivery Navigator{% endblock %}
+{% extends 'base.html' %}
+{% block title %}データ読み込み | Delivery Navigator{% endblock %}
 {% block content %}
-<h1 style="margin:0 0 8px 0;">データ取込（OCR）</h1>
-<p class="muted">スクショをアップロードして実績を登録します。ログイン中のユーザーに紐づきます。</p>
-
-<form id="ocr-form" enctype="multipart/form-data">
-  {% csrf_token %}
-  <div style="margin:12px 0;">
-    <label>スクショ画像（必須）</label><br>
-    <input type="file" name="image" accept="image/*" required>
-  </div>
-  <div style="margin:12px 0;">
-    <label>日付（任意）</label><br>
-    <input type="date" name="date">
-  </div>
-  <div style="margin:12px 0;">
-    <label>稼働時間（任意・例 3.5）</label><br>
-    <input type="text" name="hours_worked" placeholder="例 3.5">
-  </div>
-  <button type="submit" class="nav">アップロードして解析</button>
-</form>
-
-<pre id="result" style="margin-top:16px; background:#0f1a33; border:1px solid #203055; padding:12px; border-radius:12px;"></pre>
-
-<script>
-  function getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
-  }
-
-  document.getElementById('ocr-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const res = await fetch('/api/ocr/import/', {
-      method: 'POST',
-      body: fd,
-      headers: { 'X-CSRFToken': getCookie('csrftoken') || '' }
-    });
-    const txt = await res.text();
-    try {
-      document.getElementById('result').textContent = JSON.stringify(JSON.parse(txt), null, 2);
-    } catch {
-      document.getElementById('result').textContent = txt;
-    }
-  });
-</script>
+<section class="panel">
+  <h2>データ読み込み</h2>
+  <p class="muted">アプリやスクショの読み込みはここから。今は見た目だけです（送信先は無し）。</p>
+  <form onsubmit="event.preventDefault(); alert('サンプルです');" style="display:grid; gap:12px; max-width:520px;">
+    <label>画像またはCSV
+      <input type="file" accept=".png,.jpg,.jpeg,.csv" />
+    </label>
+    <button class="btn btn-primary">読み込む</button>
+  </form>
+</section>
 {% endblock %}

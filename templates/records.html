@@ -1,207 +1,29 @@
-{% extends "base.html" %}
-{% load static %}
-{% block title %}データ入力（かんたん登録） — Delivery Navigator{% endblock %}
-
+{% extends 'base.html' %}
+{% block title %}記録 | Delivery Navigator{% endblock %}
 {% block content %}
-<h1 style="font-weight:800;margin:8px 0 16px;">データ入力（かんたん登録）</h1>
-
-<div class="grid cols-2">
-  <section class="card">
-    <h3 style="margin:0 0 10px;">今日の実績を登録</h3>
-
-    <div class="row">
-      <div style="flex:1">
-        <label>日付（必須）</label>
-        <input id="f-date" type="date">
-      </div>
-      <div style="width:160px">
-        <label>プラットフォーム</label>
-        <select id="f-platform">
-          <option value="">未指定</option>
-          <option>Uber</option><option>Wolt</option><option>出前館</option>
-          <option>menu</option><option>ロケットナウ</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="row">
-      <div style="width:140px">
-        <label>件数（必須）</label>
-        <input id="f-orders" type="number" min="0" step="1" placeholder="0">
-        <div class="muted" style="margin-top:4px">
-          <button class="btn" onclick="bump('f-orders',1)">+1</button>
-          <button class="btn" onclick="bump('f-orders',5)">+5</button>
-        </div>
-      </div>
-      <div style="width:180px">
-        <label>売上（必須・円）</label>
-        <input id="f-earn" type="number" min="0" step="100" placeholder="0">
-        <div class="muted" style="margin-top:4px">
-          <button class="btn" onclick="bump('f-earn',500)">+500</button>
-          <button class="btn" onclick="bump('f-earn',1000)">+1,000</button>
-        </div>
-      </div>
-      <div style="width:160px">
-        <label>稼働時間（h）</label>
-        <input id="f-hours" type="number" min="0" step="0.25" placeholder="例) 4.5">
-        <div class="muted" style="margin-top:4px">
-          <button class="btn" onclick="bumpFloat('f-hours',0.5)">+0.5h</button>
-          <button class="btn" onclick="bumpFloat('f-hours',1)">+1h</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="row">
-      <div style="width:150px">
-        <label>開始</label>
-        <input id="f-start" type="time">
-      </div>
-      <div style="width:150px">
-        <label>終了</label>
-        <input id="f-end" type="time">
-      </div>
-      <div style="flex:1">
-        <label>配達エリア（必須ではないが推奨）</label>
-        <select id="f-area">
-          <option value="">未選択</option>
-        </select>
-        <div class="muted" style="font-size:12px;margin-top:4px">
-          エリアが未選択だとAI学習に使われない場合があります
-        </div>
-      </div>
-    </div>
-
-    <div>
-      <label>メモ</label>
-      <input id="f-note" type="text" placeholder="混雑状況/天候など任意">
-    </div>
-
-    <div style="margin-top:12px">
-      <button class="btn primary" onclick="save()">保存する</button>
-      <span id="msg" class="muted" style="margin-left:8px"></span>
-    </div>
-  </section>
-
-  <section class="card">
-    <h3 style="margin:0 0 10px;">サマリー（今日）</h3>
-    <div id="summary" class="muted">未取得</div>
-    <h3 style="margin:16px 0 10px;">最近の登録</h3>
-    <div id="recent"></div>
-  </section>
-</div>
-
+<section class="panel">
+  <h2>最近の記録</h2>
+  <p class="muted">サンプルの一覧。今は静的データです。</p>
+  <div style="overflow:auto;">
+    <table style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr><th style="text-align:left; padding:8px; border-bottom:1px solid var(--border);">日時</th>
+            <th style="text-align:left; padding:8px; border-bottom:1px solid var(--border);">エリア</th>
+            <th style="text-align:left; padding:8px; border-bottom:1px solid var(--border);">メモ</th></tr>
+      </thead>
+      <tbody id="recTbody"></tbody>
+    </table>
+  </div>
+</section>
 <script>
-  function todayStr(){
-    const d=new Date(); const m=String(d.getMonth()+1).padStart(2,'0'); const dd=String(d.getDate()).padStart(2,'0');
-    return `${d.getFullYear()}-${m}-${dd}`
-  }
-  document.getElementById('f-date').value = todayStr();
-
-  function bump(id, add){ const el=document.getElementById(id); el.value = String((parseInt(el.value||'0')||0)+add); }
-  function bumpFloat(id, add){ const el=document.getElementById(id); el.value = String(((parseFloat(el.value||'0')||0)+add).toFixed(2)); }
-
-  async function loadAreas(){
-    const res = await fetch('/api/areas/list/');
-    const js = await res.json(); const sel = document.getElementById('f-area');
-    (js.areas||[]).forEach(a=>{
-      const op = document.createElement('option');
-      op.value = a.slug; op.textContent = a.name; sel.appendChild(op);
-    });
-  }
-
-  async function save(){
-    const date  = document.getElementById('f-date').value;
-    const orders= document.getElementById('f-orders').value;
-    const earn  = document.getElementById('f-earn').value;
-    const hours = document.getElementById('f-hours').value;
-    const start = document.getElementById('f-start').value;
-    const end   = document.getElementById('f-end').value;
-    const area  = document.getElementById('f-area').value;
-    const note  = document.getElementById('f-note').value || '';
-    const msgEl = document.getElementById('msg');
-
-    // 必須チェック
-    const errs = [];
-    if(!date) errs.push("日付");
-    if(orders==="" || Number(orders)<0) errs.push("件数");
-    if(earn==="" || Number(earn)<0) errs.push("売上");
-    if(errs.length){
-      msgEl.textContent = "必須: " + errs.join(" / "); msgEl.style.color="#f99"; return;
-    }
-
-    const body = {
-      date: date,
-      orders_completed: Number(orders),
-      earnings: Number(earn),
-      hours_worked: (hours===""? null : Number(hours)),
-      start_time: start || null,
-      end_time: end || null,
-      area_slug: area || null,
-      note: note
-    };
-
-    const res = await fetch('/api/deliveries/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'X-CSRFToken': getCsrfToken(),       // ★ これが重要
-        'X-Requested-With': 'XMLHttpRequest' // おまじない
-      },
-      credentials: 'same-origin',             // Cookie を送る
-      body: JSON.stringify(body)
-    });
-
-    if(res.ok){
-      msgEl.textContent = "保存しました。"; msgEl.style.color="#9fe3a9";
-      document.getElementById('f-note').value="";
-      await reloadSummary();
-      await reloadRecent();
-    }else{
-      const j = await res.json().catch(()=>({}));
-      msgEl.textContent = "保存に失敗: " + (j.detail || (j.errors?.join?.(', ') || res.statusText));
-      msgEl.style.color="#f99";
-    }
-  }
-
-  async function reloadSummary(){
-    const start = todayStr(); const end = todayStr();
-    const res = await fetch(`/api/deliveries/summary?start=${start}&end=${end}`);
-    const js = await res.json();
-    const el = document.getElementById('summary');
-    el.innerHTML = `
-      件数: <b>${js.total_orders||0}</b> 件 / 売上: <b>${Math.round(js.total_earnings||0)}</b> 円 /
-      稼働: <b>${(js.total_hours||0).toFixed(2)}</b> h / 時給: <b>${js.hourly_rate? Math.round(js.hourly_rate): '-'}</b> 円/h
-    `;
-  }
-
-  async function reloadRecent(){
-    const res = await fetch('/api/deliveries/?start=' + (new Date(Date.now()-14*86400000)).toISOString().slice(0,10));
-    const js = await res.json();
-    const el = document.getElementById('recent');
-    if(!js.length){ el.innerHTML = '<div class="muted">直近のデータはありません。</div>'; return; }
-    el.innerHTML = `
-      <table>
-        <thead><tr>
-          <th>日付</th><th>件数</th><th>売上</th><th>時間</th><th>開始</th><th>終了</th><th>エリア</th>
-        </tr></thead>
-        <tbody>
-        ${js.slice(0,10).map(r=>`
-          <tr>
-            <td>${r.date}</td><td>${r.orders_completed}</td>
-            <td>${Math.round(r.earnings)}</td><td>${r.hours_worked??'-'}</td>
-            <td>${r.start_time??'-'}</td><td>${r.end_time??'-'}</td>
-            <td>${r.area_name??(r.area_slug||'-')}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    `;
-  }
-
-  (async function boot(){
-    await loadAreas();
-    await reloadSummary();
-    await reloadRecent();
+  (function(){
+    const tb = document.getElementById('recTbody');
+    const recs = DN_DATA.records || [];
+    tb.innerHTML = recs.map(r=>`<tr>
+      <td style="padding:8px; border-bottom:1px solid var(--border);">${r.dt}</td>
+      <td style="padding:8px; border-bottom:1px solid var(--border);">${r.area}</td>
+      <td style="padding:8px; border-bottom:1px solid var(--border);">${r.note||''}</td>
+    </tr>`).join('');
   })();
 </script>
 {% endblock %}

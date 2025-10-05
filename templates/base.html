@@ -7,7 +7,6 @@
   <title>{% block title %}Delivery Navigator{% endblock %}</title>
   <meta name="color-scheme" content="light dark" />
   <meta name="theme-color" content="#1E3932" />
-  <meta name="csrf-token" content="{{ csrf_token }}" />
   <link rel="stylesheet" href="{% static 'css/theme.css' %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,10 +21,10 @@
       <a class="brand" href="{% url 'home' %}" aria-label="Delivery Navigator トップ">DN</a>
       <button class="nav-toggle" aria-expanded="false" aria-controls="navLinks" aria-label="メニューを開閉">☰</button>
       <nav id="navLinks" class="nav-links" role="navigation" aria-label="メイン">
-        <a href="/map">マップ</a>
-        <a href="/upload/">データ読み込み</a>
-        <a href="/records">記録</a>
-        <a href="/dashboard">ダッシュボード</a>
+        <a href="{% url 'map' %}">マップ</a>
+        <a href="{% url 'upload' %}">データ読み込み</a>
+        <a href="{% url 'records' %}">記録</a>
+        <a href="{% url 'dashboard' %}">ダッシュボード</a>
       </nav>
     </div>
     <div class="nav-right">
@@ -41,13 +40,19 @@
         <span class="slider" aria-hidden="true"></span>
         <span class="toggle-label">Espresso</span>
       </label>
-      {% block nav_actions %}{% endblock %}
     </div>
   </header>
 
   <main id="main" class="container" role="main">
     {% block content %}{% endblock %}
   </main>
+
+  <nav class="tabbar" aria-label="クイックナビ">
+    <a data-tab="/" href="{% url 'home' %}">ホーム</a>
+    <a data-tab="/map/" href="{% url 'map' %}">マップ</a>
+    <a data-tab="/upload/" href="{% url 'upload' %}">読み込み</a>
+    <a data-tab="/records/" href="{% url 'records' %}">記録</a>
+  </nav>
 
   <footer class="footer" role="contentinfo">
     <div class="container">
@@ -57,10 +62,10 @@
           <p class="muted">出発前30秒で、今日の稼ぎ方が決まる。</p>
         </div>
         <div class="footer-col">
-          <a href="/map">マップ</a>
-          <a href="/upload/">データ読み込み</a>
-          <a href="/records">記録</a>
-          <a href="/dashboard">ダッシュボード</a>
+          <a href="{% url 'map' %}">マップ</a>
+          <a href="{% url 'upload' %}">データ読み込み</a>
+          <a href="{% url 'records' %}">記録</a>
+          <a href="{% url 'dashboard' %}">ダッシュボード</a>
         </div>
         <div class="footer-col">
           <p class="muted">© {{ now|date:'Y' }} Delivery Navigator</p>
@@ -69,6 +74,8 @@
     </div>
   </footer>
 
+  <!-- 静的データ（API不要） -->
+  <script defer src="{% static 'js/app_data.js' %}"></script>
   <script defer src="{% static 'js/theme.js' %}"></script>
   {% block extra_js %}{% endblock %}
 </body>

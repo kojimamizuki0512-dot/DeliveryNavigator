@@ -77,7 +77,10 @@ def _ocr_image_to_text(image_bytes: bytes):
     """
     # --- 1) Google Vision ---
     try:
-        if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        if creds_path:
+            if not os.path.exists(creds_path):
+                raise FileNotFoundError(f"Creds not found: {creds_path}")
             from google.cloud import vision  # 遅延 import
             client = vision.ImageAnnotatorClient()
             gimg = vision.Image(content=image_bytes)
@@ -86,6 +89,8 @@ def _ocr_image_to_text(image_bytes: bytes):
                 raise RuntimeError(resp.error.message)
             if resp.text_annotations:
                 return resp.text_annotations[0].description, "google-vision"
+        else:
+            logger.debug("GOOGLE_APPLICATION_CREDENTIALS is not set.")
     except Exception as e:
         logger.warning("Vision fallback: %s", e)
 

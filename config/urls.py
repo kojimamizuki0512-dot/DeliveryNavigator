@@ -1,4 +1,4 @@
-# config/urls.py  ← 全文置き換え
+# config/urls.py
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import TemplateView
@@ -23,7 +23,7 @@ urlpatterns = [
 
     # --- 認証 ---
     path("signup/", SignUpView.as_view(), name="signup"),
-    path("login/", auth_views.LoginView.as_view(template_name="login.html"), name="login"),
+    path("login/", auth_views.LoginView.as_view(template_name="registration/login.html"), name="login"),
     path("logout/", auth_views.LogoutView.as_view(next_page="home"), name="logout"),
 
     # --- 管理・ヘルスチェック ---

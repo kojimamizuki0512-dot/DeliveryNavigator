@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+.venv/
+.git/
+.gitignore
+.vscode/
+.idea/
+
+node_modules/
+dist/
+build/
+
+# これらは“除外しない”
+# static/        ← プロジェクト直下の静的（あれば含める）
+# core/static/   ← アプリの静的（必須）
+# templates/     ← HTML
+# staticfiles/   ← 生成物。ビルド時に作り直すので無くてもOK

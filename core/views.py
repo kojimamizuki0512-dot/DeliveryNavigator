@@ -4,9 +4,10 @@ import re
 import csv
 import shutil
 import datetime
+import os
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils.dateparse import parse_date
 from django.core.files.base import ContentFile
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -20,10 +21,9 @@ from rest_framework import viewsets, permissions, generics, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.views import APIView
 
 from django.db.models import Q, Sum
-from django.db import connection
+from django.db import connection  # 既存データの修復に使用
 
 from PIL import Image
 import pytesseract
@@ -36,13 +36,10 @@ from .serializers import (
     OcrImportInputSerializer,
 )
 
-# NEW: エリア定義
-from .areas import AREAS, AREA_INDEX
-
-# ---------- ユーティリティ ----------
+# ---------- ユーティリティ（OCR） ----------
 
 def _ensure_tesseract_path():
-    import os
+    """Windowsで tesseract.exe の場所を設定（settings優先 → 代表的パス → PATH）"""
     if shutil.which("tesseract"):
         return
     try:
@@ -60,9 +57,10 @@ def _ensure_tesseract_path():
         if os.path.exists(guess):
             pytesseract.pytesseract.tesseract_cmd = guess
             return
+    # 見つからない場合は pytesseract 側で例外が発生
 
-
-def _ocr_image_to_text(image_bytes: bytes) -> str:
+def _ocr_with_tesseract(image_bytes: bytes) -> str:
+    """TesseractでOCR（日本語＋英語 / フォールバック用）"""
     _ensure_tesseract_path()
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     cfg = "--psm 6"
@@ -71,9 +69,58 @@ def _ocr_image_to_text(image_bytes: bytes) -> str:
     except Exception:
         return pytesseract.image_to_string(img, lang="eng", config=cfg)
 
+def _ocr_with_google_vision(image_bytes: bytes) -> str:
+    """
+    Google Cloud VisionでOCR。
+    - 環境変数 GOOGLE_APPLICATION_CREDENTIALS が設定されていること（サービスアカウントJSONのパス）
+    - ライブラリが未インストール / 認証未設定なら ImportError / Exception を上位で拾ってフォールバック
+    """
+    try:
+        from google.cloud import vision
+    except Exception as e:
+        # ライブラリなし等
+        raise ImportError(f"google-cloud-vision not available: {e}")
+
+    client = vision.ImageAnnotatorClient()
+    image = vision.Image(content=image_bytes)
+    resp = client.text_detection(image=image)
+    if resp.error.message:
+        # Visionのエラーは例外化
+        raise RuntimeError(resp.error.message)
+    ann = resp.text_annotations
+    if ann:
+        return ann[0].description  # 最初の要素が全文
+    return ""
+
+def _ocr_image_to_text(image_bytes: bytes):
+    """
+    まず Google Vision、失敗したら Tesseract。
+    戻り値: (text: str, provider: str, fallback_error: str|None)
+    """
+    # 1) Google Vision（環境変数が未設定でも client 生成時に例外）
+    try:
+        text = _ocr_with_google_vision(image_bytes)
+        if text and text.strip():
+            return text, "google-vision", None
+        # 空読みなら Tesseract に回す
+        t = _ocr_with_tesseract(image_bytes)
+        return t, "tesseract", "vision-empty"
+    except Exception as e:
+        # Visionが使えない / エラー → Tesseract
+        try:
+            t = _ocr_with_tesseract(image_bytes)
+            return t, "tesseract", f"vision-error: {e}"
+        except Exception as e2:
+            # どちらも失敗
+            return "", "none", f"vision-error: {e} / tesseract-error: {e2}"
 
 def _parse_numbers(text: str):
+    """
+    OCR文字列から ゆるく数値を拾う（無ければ None）
+    """
     norm = text.replace("：", ":").replace("　", " ")
+
+    # 日付
     date = None
     m = re.search(r"(\d{4})[./\-](\d{1,2})[./\-](\d{1,2})", norm)
     if m:
@@ -83,6 +130,7 @@ def _parse_numbers(text: str):
         except ValueError:
             date = None
 
+    # 件数
     orders = None
     for pat in [
         r"\bOrders?\s*:\s*(\d+)\b",
@@ -98,6 +146,7 @@ def _parse_numbers(text: str):
             except Exception:
                 pass
 
+    # 売上
     earnings = None
     m = re.search(r"\bEarnings?\s*:\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)", norm, re.IGNORECASE)
     if m:
@@ -114,6 +163,7 @@ def _parse_numbers(text: str):
             except Exception:
                 pass
 
+    # 稼働時間
     hours = None
     for pat in [
         r"\bHours?\s*:\s*(\d+(?:\.\d+)?)\s*h\b",
@@ -129,7 +179,7 @@ def _parse_numbers(text: str):
 
     return {"date": date, "orders": orders, "earnings": earnings, "hours": hours}
 
-
+# Decimal を安全に作る
 Q2 = Decimal("0.01")
 def _to_decimal_or_none(val):
     if val is None:
@@ -144,8 +194,8 @@ def _to_decimal_or_none(val):
     except (InvalidOperation, ValueError, TypeError):
         return None
 
-
 def _repair_decimal_columns():
+    """既存データの不正値を安全に修復する。"""
     try:
         with connection.cursor() as cur:
             cur.execute(
@@ -160,7 +210,6 @@ def _repair_decimal_columns():
             )
     except Exception:
         pass
-
 
 # ---------- API ----------
 
@@ -226,28 +275,47 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def heatmap(self, request):
+        """
+        GET /api/deliveries/heatmap?start=YYYY-MM-DD&end=YYYY-MM-DD
+        返却: 7x24 の行列（weekday=0..6/月..日, hour=0..23）
+          values: その時間帯の平均時給（円/h）
+          counts: 積算した有効時間（h）サンプル量
+          top_slots: 推奨スロット（上位3件）
+        """
         from math import floor, ceil
+
         qs = self.get_queryset().only(
             "date", "earnings", "hours_worked", "start_time", "end_time"
         )
+
+        # 集計バッファ
         sum_earn = [[0.0 for _ in range(24)] for _ in range(7)]
         sum_hours = [[0.0 for _ in range(24)] for _ in range(7)]
+
         for r in qs:
             if not r.start_time or not r.end_time or not r.earnings:
+                # 時刻が無いデータはヒートマップには使わない（誤学習防止）
                 continue
+
             sh = r.start_time.hour + r.start_time.minute / 60.0
             eh = r.end_time.hour + r.end_time.minute / 60.0
+
+            # 同日内のみ（えいっで丸め）。終了<=開始なら hours_worked で補完
             if eh <= sh:
                 dur = float(r.hours_worked or 0) or 0.0
                 if dur <= 0:
                     continue
                 eh = min(24.0, sh + dur)
+
             dur = max(0.0, eh - sh)
             if dur <= 0:
                 continue
-            wd = r.date.weekday()
+
+            wd = r.date.weekday()  # 0=Mon
+            # 時給を時間配分して加算
             earn = float(r.earnings)
-            for h in range(max(0, floor(sh)), min(24, ceil(eh))):
+            for h in range(max(0, int(floor(sh))), min(24, int(ceil(eh)))):
+                # その時間枠にどれくらい被っているか（0..1）
                 left = max(sh, h)
                 right = min(eh, h + 1)
                 portion = max(0.0, right - left)
@@ -255,6 +323,7 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
                     sum_earn[wd][h] += earn * (portion / dur)
                     sum_hours[wd][h] += portion
 
+        # 平均時給 matrix を作成
         values = []
         vmax = 0.0
         for wd in range(7):
@@ -266,10 +335,11 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
                 vmax = max(vmax, val)
             values.append(row)
 
+        # 推奨スロット（上位3件、サンプル1時間以上）
         slots = []
         for wd in range(7):
             for h in range(24):
-                if sum_hours[wd][h] >= 1.0:
+                if sum_hours[wd][h] >= 1.0:  # 1時間以上のサンプル
                     slots.append((values[wd][h], wd, h, sum_hours[wd][h]))
         slots.sort(reverse=True, key=lambda x: x[0])
         name = ["月","火","水","木","金","土","日"]
@@ -283,7 +353,6 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
             "vmax": round(vmax),
             "top_slots": top,
         })
-
 
 class EntranceInfoViewSet(viewsets.ModelViewSet):
     serializer_class = EntranceInfoSerializer
@@ -299,7 +368,6 @@ class EntranceInfoViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-
 class MeView(generics.RetrieveUpdateAPIView):
     serializer_class = UserPublicSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -307,61 +375,69 @@ class MeView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return self.request.user
 
-
 # ---------- 画面（ユーザー向け） ----------
 
 class DashboardView(LoginRequiredMixin, TemplateView):
     login_url = '/login/'
     template_name = 'dashboard.html'
 
-
 class MapView(LoginRequiredMixin, TemplateView):
     login_url = '/login/'
     template_name = 'map.html'
-
 
 class UploadView(LoginRequiredMixin, TemplateView):
     login_url = '/login/'
     template_name = 'upload.html'
 
-
 class RecordsView(LoginRequiredMixin, TemplateView):
+    """実績一覧/編集（フロントはAPI呼び出し）"""
     login_url = '/login/'
     template_name = 'records.html'
-
 
 # ---------- サインアップ（UI） ----------
 
 class SignUpForm(UserCreationForm):
     email = forms.EmailField(required=False)
+
     class Meta(UserCreationForm.Meta):
         model = get_user_model()
-        fields = ("username", "email")
-
+        fields = ("username", "email")  # password1/password2 は UserCreationForm が持つ
 
 class SignUpView(FormView):
     template_name = "signup.html"
     form_class = SignUpForm
+    # 登録後はトップへ
     success_url = reverse_lazy("home")
+
     def form_valid(self, form):
         user = form.save()
-        auth_login(self.request, user)
+        auth_login(self.request, user)  # 登録後そのままログイン
         return super().form_valid(form)
-
 
 # ---------- OCR 取り込み ----------
 
 class OcrImportView(generics.GenericAPIView):
+    """
+    POST /api/ocr/import/
+      - multipart/form-data:
+          - image: ファイル
+          - date (任意): YYYY-MM-DD
+          - hours_worked (任意): 数値文字列（小数可）
+      - 動作: Google Vision → 失敗時 Tesseract の順でOCRし、既存レコード(date)にUpsert
+    """
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
     serializer_class = OcrImportInputSerializer
 
     def post(self, request, *args, **kwargs):
         _repair_decimal_columns()
+
         s = self.get_serializer(data=request.data)
         s.is_valid(raise_exception=True)
+
         image = s.validated_data["image"]
         date_override = s.validated_data.get("date")
+
         hours_raw = s.validated_data.get("hours_worked")
         hours_override = None
         if hours_raw is not None:
@@ -374,7 +450,10 @@ class OcrImportView(generics.GenericAPIView):
                 hours_override = None
 
         data = image.read()
-        raw_text = _ocr_image_to_text(data)
+
+        # --- OCR（Vision→Tesseract） ---
+        raw_text, provider, fb_error = _ocr_image_to_text(data)
+
         parsed = _parse_numbers(raw_text)
 
         if date_override:
@@ -429,7 +508,9 @@ class OcrImportView(generics.GenericAPIView):
             if updated_fields:
                 rec.save(update_fields=updated_fields)
 
+        # OCRインポート履歴
         job = OcrImport(user=request.user, status="success")
+        # 画像保存ポリシー：まずは保存（プライバシー方針に応じて後日切替）
         job.image.save(image.name, ContentFile(data))
         job.raw_text = raw_text
         job.parsed_json = {
@@ -437,7 +518,12 @@ class OcrImportView(generics.GenericAPIView):
             "orders": parsed["orders"],
             "earnings": parsed["earnings"],
             "hours": parsed["hours"],
+            "provider": provider,
         }
+        msg = f"provider={provider}"
+        if fb_error:
+            msg += f" / note={fb_error}"
+        job.message = msg
         job.created_record = rec
         job.save()
 
@@ -450,126 +536,3 @@ class OcrImportView(generics.GenericAPIView):
             "parsed": job.parsed_json,
             "raw_text": raw_text,
         }, status=status.HTTP_201_CREATED)
-
-
-# ---------- エリア（新規） ----------
-
-class AreasListView(APIView):
-    """
-    GET /api/areas/list/
-    """
-    permission_classes = [permissions.AllowAny]
-
-    def get(self, request, *args, **kwargs):
-        return Response({"areas": AREAS})
-
-
-class AreasStatsView(APIView):
-    """
-    GET /api/areas/stats?top=3&days=60&hour=now
-    - 直近days日から、指定hour（現在時刻1h枠）に重なるデータだけで時給を推定
-    - レスポンス: items（全件ソート済み）, top（上位N）
-    - 各アイテム: slug, name, lat, lng, hourly, hours, recent_hot
-    """
-    permission_classes = [permissions.AllowAny]
-
-    def get(self, request, *args, **kwargs):
-        # パラメータ
-        top = int(request.GET.get("top", "3"))
-        days = int(request.GET.get("days", "60"))
-        hour_param = request.GET.get("hour")
-        now = datetime.datetime.now()
-        cur_hour = int(hour_param) if hour_param is not None else now.hour
-        since = now.date() - datetime.timedelta(days=days)
-
-        # 対象
-        qs = (
-            DeliveryRecord.objects
-            .filter(date__gte=since)
-            .exclude(area_slug__isnull=True)
-            .exclude(area_slug="")
-            .only("date", "earnings", "hours_worked", "start_time", "end_time", "area_slug")
-        )
-
-        sums = {}  # area_slug -> {"earn":float, "hours":float}
-        for r in qs:
-            if not r.earnings:
-                continue
-            if not r.start_time or not r.end_time:
-                # 時刻が無いデータは「今の1時間」に割り当てできないので除外
-                continue
-
-            sh = r.start_time.hour + r.start_time.minute / 60.0
-            eh = r.end_time.hour + r.end_time.minute / 60.0
-            if eh <= sh:
-                dur = float(r.hours_worked or 0) or 0.0
-                if dur <= 0:
-                    continue
-                eh = min(24.0, sh + dur)
-
-            dur = max(0.0, eh - sh)
-            if dur <= 0:
-                continue
-
-            # 「現在の1時間枠」との重なりだけを使う
-            left = max(sh, float(cur_hour))
-            right = min(eh, float(cur_hour) + 1.0)
-            portion = max(0.0, right - left)
-            if portion <= 0:
-                continue
-
-            slot = sums.setdefault(r.area_slug, {"earn": 0.0, "hours": 0.0})
-            slot["earn"] += float(r.earnings) * (portion / dur)
-            slot["hours"] += portion
-
-        items = []
-        for slug, agg in sums.items():
-            hrs = agg["hours"]
-            if hrs <= 0:
-                continue
-            hourly = agg["earn"] / hrs
-            meta = AREA_INDEX.get(slug, {"name": slug, "lat": None, "lng": None})
-            items.append({
-                "slug": slug,
-                "name": meta.get("name", slug),
-                "lat": meta.get("lat"),
-                "lng": meta.get("lng"),
-                "hourly": round(hourly),
-                "hours": round(hrs, 2),
-                "recent_hot": False,  # 後で更新
-            })
-
-        # --- #14 直近◎：直近7日の時給で上位（p75以上）にタグ付け ---
-        since7 = now.date() - datetime.timedelta(days=7)
-        qs7 = (
-            DeliveryRecord.objects
-            .filter(date__gte=since7)
-            .exclude(area_slug__isnull=True)
-            .exclude(area_slug="")
-            .only("earnings", "hours_worked", "area_slug")
-        )
-        agg7 = {}
-        for r in qs7:
-            h = float(r.hours_worked or 0) or 0.0
-            if h <= 0:
-                continue
-            a = agg7.setdefault(r.area_slug, {"earn": 0.0, "hours": 0.0})
-            a["earn"] += float(r.earnings or 0.0)
-            a["hours"] += h
-        hourly7 = {k: (v["earn"] / v["hours"]) for k, v in agg7.items() if v["hours"] > 0}
-
-        vals = sorted(hourly7.values())
-        thr = None
-        if vals:
-            # p75
-            idx = max(0, int(0.75 * len(vals)) - 1)
-            thr = vals[idx]
-
-        by_slug = {it["slug"]: it for it in items}
-        if thr is not None:
-            for slug, val in hourly7.items():
-                if slug in by_slug and val >= thr:
-                    by_slug[slug]["recent_hot"] = True
-
-        items.sort(key=lambda x: x["hourly"], reverse=True)
-        return Response({"items": items, "top": items[:top]})

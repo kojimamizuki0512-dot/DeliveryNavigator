@@ -28,7 +28,7 @@ from rest_framework.views import APIView
 from django.db.models import Q, Sum
 from django.db import connection  # 既存データの修復に使用
 
-from PIL import Image
+from PIL import Image, ImageOps
 import pytesseract
 
 from .models import DeliveryRecord, EntranceInfo, OcrImport
@@ -71,37 +71,48 @@ def _ensure_tesseract_path():
 
 def _ocr_image_to_text(image_bytes: bytes):
     """
-    可能なら Google Vision、だめなら Tesseract にフォールバック。
+    可能なら Google Vision（文書向け）→ ダメなら Tesseract にフォールバック。
     成功: (text:str, provider:str)  provider は "google-vision" | "tesseract"
     失敗: (None, None)
     """
-    # --- 1) Google Vision ---
+    # --- Google Vision（文書向け OCR が強い） ---
     try:
         creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-        if creds_path:
-            if not os.path.exists(creds_path):
-                raise FileNotFoundError(f"Creds not found: {creds_path}")
+        if creds_path and os.path.exists(creds_path):
             from google.cloud import vision  # 遅延 import
             client = vision.ImageAnnotatorClient()
             gimg = vision.Image(content=image_bytes)
-            resp = client.text_detection(image=gimg)
+            # 日本語と英語のヒント
+            ctx = vision.ImageContext(language_hints=["ja", "en"])
+            resp = client.document_text_detection(image=gimg, image_context=ctx)
             if getattr(resp, "error", None) and resp.error.message:
                 raise RuntimeError(resp.error.message)
+            # 文書全体のテキスト
+            if resp.full_text_annotation and resp.full_text_annotation.text:
+                return resp.full_text_annotation.text, "google-vision"
+            # 念のための後方互換（text_annotations[0]）
             if resp.text_annotations:
                 return resp.text_annotations[0].description, "google-vision"
         else:
-            logger.debug("GOOGLE_APPLICATION_CREDENTIALS is not set.")
+            logger.debug(
+                "GOOGLE_APPLICATION_CREDENTIALS not set or file missing: %s",
+                creds_path,
+            )
     except Exception as e:
         logger.warning("Vision fallback: %s", e)
 
-    # --- 2) Tesseract ---
+    # --- Tesseract（向き補正＋軽い2値化） ---
     try:
         _ensure_tesseract_path()
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        cfg = "--psm 6"
+        # EXIFの回転を正し、グレースケール化
+        img = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes))).convert("L")
+        # シンプルな閾値処理（背景を白、文字を黒へ寄せる）
+        img = img.point(lambda x: 255 if x > 180 else 0)
+        cfg = "--psm 6"  # 均等なブロック内テキスト
         try:
             return pytesseract.image_to_string(img, lang="jpn+eng", config=cfg), "tesseract"
         except Exception:
+            # 日本語辞書が無い環境向けフォールバック
             return pytesseract.image_to_string(img, lang="eng", config=cfg), "tesseract"
     except Exception as e:
         logger.error("Tesseract OCR failed: %s", e)
@@ -148,7 +159,10 @@ def _parse_numbers(text: str):
         except Exception:
             earnings = None
     if earnings is None:
-        nums = re.findall(r"[¥\u00A5]?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)\s*(?:円|JPY|¥)?", norm)
+        nums = re.findall(
+            r"[¥\u00A5]?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)\s*(?:円|JPY|¥)?",
+            norm,
+        )
         if nums:
             try:
                 candidates = [int(n.replace(",", "")) for n in nums]
@@ -397,7 +411,7 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
                 if sum_hours[wd][h] >= 1.0:  # 1時間以上のサンプル
                     slots.append((values[wd][h], wd, h, sum_hours[wd][h]))
         slots.sort(reverse=True, key=lambda x: x[0])
-        name = ["月","火","水","木","金","土","日"]
+        name = ["月", "火", "水", "木", "金", "土", "日"]
         top = []
         for v, wd, h, hrs in slots[:3]:
             top.append({"label": f"{name[wd]} {h:02d}:00", "hourly": round(v), "hours": round(hrs, 1)})

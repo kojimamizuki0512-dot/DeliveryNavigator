@@ -7,8 +7,8 @@ from .views import (
     EntranceInfoViewSet,
     MeView,
     OcrImportView,
-    AreasListView,     # 追加
-    AreasStatsView,    # 追加
+    AreasListView,
+    AreasStatsView,  # ← 追加
 )
 
 router = DefaultRouter()
@@ -19,6 +19,6 @@ urlpatterns = [
     path("", include(router.urls)),
     path("me/", MeView.as_view(), name="me"),
     path("ocr/import/", OcrImportView.as_view(), name="ocr-import"),
-    path("areas/list/", AreasListView.as_view(), name="areas-list"),
-    path("areas/stats/", AreasStatsView.as_view(), name="areas-stats"),
+    path("areas/", AreasListView.as_view(), name="areas-list"),
+    path("areas/stats/", AreasStatsView.as_view(), name="areas-stats"),  # ← 追加
 ]

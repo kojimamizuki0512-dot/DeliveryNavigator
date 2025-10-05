@@ -1,325 +1,113 @@
 {% extends "base.html" %}
 {% load static %}
-
-{% block title %}Delivery Navigator — リアルタイム地図＆今日のAIルート{% endblock %}
-
-{% block header %}
-  <!-- Leaflet（地図） & Heatmap プラグイン -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-    crossorigin=""
-  />
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-    crossorigin=""
-  ></script>
-  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
-  <style>
-    .page-h1{font-weight:800;font-size:clamp(22px,3.2vw,36px);margin:14px 0 18px}
-    .map-card,.route-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:0;overflow:hidden}
-    .map-toolbar{
-      position:absolute;top:10px;left:10px;z-index:5000;
-      background:rgba(8,14,28,0.86);backdrop-filter:blur(6px);
-      border:1px solid var(--line);border-radius:12px;padding:10px;min-width:260px
-    }
-    .map-toolbar .row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
-    .map-toolbar label{font-size:12px;color:#b7c6de;min-width:62px}
-    .map-footer{
-      position:absolute;bottom:10px;left:10px;z-index:5000;
-      background:rgba(8,14,28,0.82);border:1px solid var(--line);border-radius:12px;padding:8px 10px;color:var(--muted);font-size:12px
-    }
-    .legend{display:flex;align-items:center;gap:10px}
-    .legend-bar{width:160px;height:12px;border-radius:8px;
-      background:linear-gradient(90deg,#2c7bb6,#abd9e9,#ffffbf,#fdae61,#d7191c)}
-    .legend-label{display:flex;justify-content:space-between;margin-top:4px;font-size:12px;color:var(--muted)}
-    #map{width:100%;height:72vh;min-height:420px}
-    .route-card .head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line)}
-    .route-card .body{padding:14px 16px}
-    .pill{border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted);font-size:12px}
-    .block{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px;background:#0f1e3d}
-    .block h4{margin:0 0 4px;font-size:14px}
-    .rank-item{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:8px 2px}
-    .rank-item:last-child{border-bottom:none}
-    .muted-sm{color:var(--muted);font-size:12px}
-    .btn.full{width:100%}
-    .grid-2{display:grid;grid-template-columns:2fr 1.2fr;gap:16px}
-    @media (max-width:980px){.grid-2{grid-template-columns:1fr}}
-  </style>
-{% endblock %}
+{% block title %}Delivery Navigator — いま稼げる地域{% endblock %}
 
 {% block content %}
-  <h1 class="page-h1">リアルタイムで“いま稼げる地域”を地図でチェック</h1>
+<h1 style="font-weight:800;margin:8px 0 16px;">いま稼げる地域</h1>
 
-  <div class="grid-2">
-    <!-- 左：地図 -->
-    <section class="map-card">
-      <div style="position:relative">
-        <div id="map"></div>
+<div class="grid cols-2">
+  <!-- 左：地図 -->
+  <section class="card" style="padding:0; height:70vh; overflow:hidden;">
+    <div id="map" style="width:100%; height:70vh;"></div>
+  </section>
 
-        <!-- コントロール -->
-        <div class="map-toolbar">
-          <div class="row">
-            <label>開始</label>
-            <input id="startTime" type="time">
-          </div>
-          <div class="row">
-            <label>稼働</label>
-            <select id="horizon">
-              <option value="3">3時間</option>
-              <option value="4" selected>4時間</option>
-              <option value="5">5時間</option>
-              <option value="6">6時間</option>
-            </select>
-          </div>
-          <div class="row">
-            <label>移動コスト</label>
-            <select id="mobility">
-              <option value="low">低</option>
-              <option value="mid" selected>中</option>
-              <option value="high">高</option>
-            </select>
-          </div>
-          <div class="row">
-            <label>AIモード</label>
-            <select id="mode">
-              <option value="blend" selected>ブレンド</option>
-              <option value="base">ベース統計</option>
-              <option value="ml">MLのみ</option>
-            </select>
-          </div>
-          <div class="row">
-            <label>表示感度</label>
-            <input id="radius" type="range" min="18" max="50" value="32" style="width:120px">
-          </div>
-          <button id="btnPlan" class="btn full">今日のAIルート</button>
-          <div class="muted-sm" style="margin-top:6px">ヒートは2分ごとに自動更新（p90スケーリング）</div>
+  <!-- 右：今すぐ3エリア + 補助 -->
+  <section class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h3 style="margin:0">今すぐの3エリア</h3>
+      <div class="muted" id="now-hour">--:--</div>
+    </div>
+    <div id="top-cards" style="margin-top:8px"></div>
+
+    <div class="muted" style="margin-top:16px;font-size:12px">
+      提示は統計ベース（直近データ）。「直近◎」は過去7日で好調だったエリアです。
+    </div>
+  </section>
+</div>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+ integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+ integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<script>
+let map, markersLayer, labelsLayer;
+
+// グラデーション（低→高）
+function colorFor(yen){
+  // 0〜max をざっくり。p90などはAPI側で調整済み想定、ここは簡易。
+  const v = Math.max(0, Math.min(1, (yen || 0) / 3000)); // 0〜3,000円/h を 0..1 に
+  const r = Math.floor(255 * v);
+  const g = Math.floor(200 * v);
+  const b = Math.floor(255 * (1 - v));
+  return `rgb(${r},${g},${b})`; // 青→赤寄り
+}
+
+// 数字ラベル（円/h）
+function makeLabelHtml(yen){
+  return `<div style="
+    background: rgba(0,0,0,0.55);
+    color:#fff; padding:2px 6px; border-radius:8px; font-size:12px; border:1px solid rgba(255,255,255,0.15);
+  ">${Math.round(yen)}<span style="font-size:10px;margin-left:2px">円/h</span></div>`;
+}
+
+function setNowHour(){
+  const d = new Date();
+  document.getElementById('now-hour').textContent =
+    `${String(d.getHours()).padStart(2,'0')}:00`;
+}
+
+async function loadStats(){
+  setNowHour();
+  const res = await fetch('/api/areas/stats?top=3', {credentials:'same-origin'});
+  const js = await res.json();
+
+  // 地図に反映（色＋数字）
+  markersLayer.clearLayers();
+  labelsLayer.clearLayers();
+  (js.items||[]).forEach(it=>{
+    if(it.lat==null || it.lng==null) return;
+    const c = colorFor(it.hourly);
+    const circle = L.circleMarker([it.lat, it.lng], {
+      radius: 18, weight: 2, color: c, fillColor: c, fillOpacity: 0.35
+    }).addTo(markersLayer).bindTooltip(`${it.name} / 約${Math.round(it.hourly)}円/h`);
+
+    const divIcon = L.divIcon({html: makeLabelHtml(it.hourly), className: '', iconSize: [60,24]});
+    L.marker([it.lat, it.lng], {icon: divIcon}).addTo(labelsLayer);
+  });
+
+  // 右ペイン：今すぐ3エリアカード
+  const box = document.getElementById('top-cards');
+  box.innerHTML = (js.top||[]).map(it => `
+    <div class="card" style="margin:10px 0;padding:12px; display:flex; align-items:center; justify-content:space-between;">
+      <div>
+        <div style="font-weight:700">${it.name}
+          ${it.recent_hot ? '<span class="chip" style="margin-left:6px;background:#3b5c1a;color:#c8f5a2;border-color:#527c2a">直近◎</span>' : ''}
         </div>
-
-        <!-- 凡例 -->
-        <div class="map-footer">
-          <div class="legend">
-            <span class="muted-sm">期待時給</span>
-            <div class="legend-bar"></div>
-          </div>
-          <div class="legend-label">
-            <span id="legendMin">0円/h</span>
-            <span id="legendMax">—</span>
-          </div>
-        </div>
+        <div class="muted" style="font-size:12px">約 ${Math.round(it.hourly)} 円 / h ・ サンプル ${it.hours} h</div>
       </div>
-    </section>
+      ${it.lat!=null && it.lng!=null ? `<button class="btn" onclick="fly(${it.lat},${it.lng})">ズーム</button>` : ''}
+    </div>
+  `).join('');
+}
 
-    <!-- 右：AIルート & ランキング -->
-    <section class="route-card">
-      <div class="head">
-        <h3 style="margin:0">今日のAIルート</h3>
-        <span id="planBadge" class="pill">未生成</span>
-      </div>
-      <div class="body">
-        <div id="planBlocks" style="margin-bottom:14px"></div>
+function fly(lat,lng){
+  map.flyTo([lat,lng], 15, {duration: 0.7});
+}
 
-        <h3 style="margin:8px 0 6px">ランキング（トップ20）</h3>
-        <div id="ranking"></div>
-      </div>
-    </section>
-  </div>
+(function boot(){
+  map = L.map('map', {zoomControl:true}).setView([35.68,139.76], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
 
-  <script>
-    // ----------- 設定 -----------
-    const MOBILITY_BETA = { low: 60, mid: 120, high: 240 }; // 移動ペナルティ（円/km）
-    const AUTO_REFRESH_MS = 120000; // 2分
+  markersLayer = L.layerGroup().addTo(map);
+  labelsLayer = L.layerGroup().addTo(map);
 
-    // ----------- UI要素 -----------
-    const $start  = document.getElementById('startTime');
-    const $hor    = document.getElementById('horizon');
-    const $mob    = document.getElementById('mobility');
-    const $mode   = document.getElementById('mode');
-    const $btn    = document.getElementById('btnPlan');
-    const $plan   = document.getElementById('planBlocks');
-    const $badge  = document.getElementById('planBadge');
-    const $rank   = document.getElementById('ranking');
-    const $radius = document.getElementById('radius');
-    const $legendMin = document.getElementById('legendMin');
-    const $legendMax = document.getElementById('legendMax');
-
-    // ----------- 時刻初期値（次の15分丸め） -----------
-    (function initStartTime(){
-      const now = new Date();
-      let m = Math.ceil((now.getMinutes()+1)/15)*15;
-      let h = now.getHours();
-      if (m===60){ h=(h+1)%24; m=0; }
-      $start.value = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
-    })();
-
-    // ----------- 地図初期化 -----------
-    const map = L.map('map',{ zoomControl:true, scrollWheelZoom:true });
-    // 初期中心：東京駅付近（データがあれば後でfitBounds）
-    map.setView([35.6812,139.7671], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap'
-    }).addTo(map);
-
-    let heatLayer = null;
-    let routeLayer = L.layerGroup().addTo(map);
-    let pointsLayer = L.layerGroup().addTo(map); // 色付きサークル
-    let areaPoints = {}; // slug -> {lat,lng,name}
-
-    // ----------- エリアリスト取得（初回だけ） -----------
-    async function loadAreas(){
-      const res = await fetch('/api/areas/list/');
-      const js  = await res.json();
-      const pts = js.areas || [];
-      let bounds = [];
-      pts.forEach(a=>{
-        areaPoints[a.slug] = {lat:a.lat, lng:a.lng, name:a.name};
-        bounds.push([a.lat,a.lng]);
-      });
-      if (bounds.length){
-        const b = L.latLngBounds(bounds);
-        map.fitBounds(b.pad(0.15));
-      }
-    }
-
-    // 量子化色（5段階）
-    const BIN_EDGES = [0.2, 0.4, 0.6, 0.8, 1.0];
-    const BIN_COLORS = ['#2c7bb6','#abd9e9','#ffffbf','#fdae61','#d7191c']; // Blue→Yellow→Red
-
-    function quantile(arr, q){
-      if (!arr.length) return 0;
-      const a = arr.slice().sort((x,y)=>x-y);
-      const pos = (a.length-1)*q;
-      const base = Math.floor(pos);
-      const rest = pos - base;
-      if (a[base+1] !== undefined) return a[base] + rest*(a[base+1]-a[base]);
-      return a[base];
-    }
-
-    // ----------- ヒートマップ更新 -----------
-    async function refreshHeat(){
-      const now = new Date();
-      const dow = (now.getDay()+6)%7; // JS:0=Sun -> 0=Monへ合わせる
-      const hour= now.getHours();
-      const mode = $mode.value;
-
-      const res  = await fetch(`/api/areas/stats/?dow=${dow}&hour=${hour}&mode=${mode}`);
-      const js   = await res.json();
-      const rows = js.ranking || [];
-      $rank.innerHTML = renderRanking(rows);
-
-      // p90 を最大基準にして外れ値の影響を抑制
-      const vals = rows.map(r=>r.hourly||0).filter(v=>v>0);
-      const vmax = Math.max(1, quantile(vals, 0.9) || 1);
-      const vmin = Math.min(...vals, 0);
-      $legendMin.textContent = `${Math.round(vmin)}円/h`;
-      $legendMax.textContent = `${Math.round(vmax)}円/h (p90)`;
-
-      // ヒートレイヤ
-      const heat = rows.map(r => [r.lat, r.lng, Math.max(0.05, Math.min(1, (r.hourly||0)/vmax))]);
-      if (heatLayer){ map.removeLayer(heatLayer); }
-      heatLayer = L.heatLayer(heat, {
-        radius: Number($radius.value),
-        blur: 20,
-        maxZoom: 14,
-        // 明確な色分け（Blue → Yellow → Red）
-        gradient: {
-          0.0:  '#2c7bb6',  // low
-          0.25: '#abd9e9',
-          0.5:  '#ffffbf',
-          0.75: '#fdae61',
-          1.0:  '#d7191c'   // high
-        }
-      }).addTo(map);
-
-      // 色付きサークル（同じ正規化で5段階）
-      pointsLayer.clearLayers();
-      rows.forEach(r=>{
-        const t = Math.max(0.0, Math.min(1.0, (r.hourly||0)/vmax));
-        let idx = BIN_EDGES.findIndex(e => t <= e);
-        if (idx < 0) idx = BIN_EDGES.length-1;
-        const color = BIN_COLORS[idx];
-        const mk = L.circleMarker([r.lat,r.lng],{
-          radius: 7, weight: 1.5, color: '#0b162f',
-          fillColor: color, fillOpacity: 0.95
-        }).bindTooltip(
-          `${r.name}<br>${Math.round(r.hourly)} 円/h <span style="color:#9fb3c8">(${r.samples_h}h)</span>`,
-          {sticky:true}
-        );
-        pointsLayer.addLayer(mk);
-      });
-    }
-
-    function renderRanking(rows){
-      const top = rows.slice(0,20);
-      if (!top.length) return '<div class="muted-sm">データがありません。</div>';
-      return top.map((r,i)=>`
-        <div class="rank-item">
-          <div><span class="pill" style="margin-right:8px">#${i+1}</span>${r.name}</div>
-          <div class="muted-sm">${r.hourly} 円/h <span style="margin-left:8px">(${r.samples_h}h)</span></div>
-        </div>
-      `).join('');
-    }
-
-    // ----------- ルート生成 & 地図に描画 -----------
-    async function makePlan(){
-      routeLayer.clearLayers();
-
-      const start = $start.value;
-      const hours = $hor.value;
-      const mode  = $mode.value;
-      const beta  = MOBILITY_BETA[$mob.value] || 120;
-
-      const url = `/api/areas/today_plan/?start=${encodeURIComponent(start)}&hours=${hours}&beta=${beta}&mode=${mode}`;
-      const res = await fetch(url);
-      const js  = await res.json();
-      const blocks = js.blocks || [];
-
-      if (!blocks.length){
-        $badge.textContent = '未生成';
-        $plan.innerHTML = '<div class="muted-sm">データ不足のため提案できません。</div>';
-        return;
-      }
-
-      $badge.textContent = `${blocks.length}ブロック`;
-
-      // リスト表示
-      $plan.innerHTML = blocks.map(b => `
-        <div class="block">
-          <h4>${b.time} — ${b.name}</h4>
-          <div class="muted-sm">期待: ${b.expected_hourly} 円/h　サンプル: ${b.samples_h} h</div>
-        </div>
-      `).join('');
-
-      // 地図に線とピン
-      const pts = [];
-      blocks.forEach(b=>{
-        pts.push([b.lat,b.lng]);
-        const mk = L.circleMarker([b.lat,b.lng],{
-          radius:9, weight:2, color:'#4cc9f0', fillColor:'#4cc9f0', fillOpacity:0.15
-        }).bindTooltip(`${b.time}<br>${b.name}<br>${b.expected_hourly} 円/h`, {sticky:true});
-        routeLayer.addLayer(mk);
-      });
-      if (pts.length>=2){
-        const pl = L.polyline(pts,{weight:3,opacity:0.9,color:'#4cc9f0'});
-        routeLayer.addLayer(pl);
-        map.fitBounds(pl.getBounds().pad(0.2));
-      }else if (pts.length===1){
-        map.setView(pts[0], 13);
-      }
-    }
-
-    // ----------- 初期化とオートリフレッシュ -----------
-    (async function boot(){
-      await loadAreas();
-      await refreshHeat();
-      setInterval(refreshHeat, AUTO_REFRESH_MS);
-    })();
-
-    document.getElementById('btnPlan').addEventListener('click', makePlan);
-    document.getElementById('mode').addEventListener('change', refreshHeat);
-    document.getElementById('radius').addEventListener('input', refreshHeat);
-  </script>
+  loadStats();
+  // 5分ごとに更新（任意）
+  setInterval(loadStats, 5*60*1000);
+})();
+</script>
 {% endblock %}

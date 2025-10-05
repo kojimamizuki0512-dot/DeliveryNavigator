@@ -33,7 +33,7 @@
     </div>
   </section>
 
-  <!-- 右：瞬間3エリア提案（今すぐ/30分後/1時間後） -->
+  <!-- 右：瞬間3エリア提案（今すぐ/30分後/1時間後）＋ 時間帯タイムライン -->
   <section class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <h3 style="margin:0">瞬間3エリア提案</h3>
@@ -55,6 +55,23 @@
       <div id="slot-60" style="margin-top:6px"></div>
     </div>
 
+    <hr style="border:none;border-top:1px solid var(--line);margin:16px 0">
+
+    <!-- ▼ 時間帯タイムライン -->
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h3 style="margin:0">時間帯タイムライン（今日）</h3>
+      <div>
+        <button class="btn ghost" id="tl-4h">+4h</button>
+        <button class="btn ghost" id="tl-6h">+6h</button>
+        <button class="btn ghost" id="tl-8h">+8h</button>
+      </div>
+    </div>
+    <div class="muted" style="font-size:12px;margin-top:4px">
+      タップでその時間の地図に切替（KPI: 1秒以内にズーム）。右端のボタンで表示時間数を変更できます。
+    </div>
+
+    <div id="timeline" style="margin-top:10px"></div>
+
     <div class="muted" style="margin-top:16px;font-size:12px">
       理由は「実績◎（直近7日で上位）／移動少（現在地から近い）／密度高（サンプル時間が多い）」で表示します。
     </div>
@@ -68,7 +85,7 @@
  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
 <style>
-/* ▼ 凡例のスタイル（色弱配慮：数値・境界・説明を明示） */
+/* ▼ 凡例 */
 .legend{
   position:absolute; right:10px; bottom:10px;
   background:rgba(10,18,36,0.9);
@@ -95,15 +112,29 @@
 .pat-mid{background-image:radial-gradient(circle at 6px 6px, rgba(255,255,255,0.35) 1.5px, rgba(255,255,255,0) 2px);}
 .pat-low{background-image:none;}
 .legend-note{margin-top:4px; font-size:11px;}
+
+/* ▼ タイムライン */
+.tl-row{
+  display:flex; align-items:center; justify-content:space-between;
+  border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:8px 0;
+  background:var(--card); cursor:pointer; transition:.15s;
+}
+.tl-row:hover{ filter:brightness(1.05); }
+.tl-row.active{ outline:2px solid #3182ce; outline-offset:2px; }
+.tl-left{ display:flex; align-items:center; gap:10px; }
+.tl-time{ font-weight:800; min-width:58px; text-align:center; }
+.tl-badges{ display:flex; gap:6px; flex-wrap:wrap; }
 </style>
 
 <script>
 let map, markersLayer, labelsLayer;
-let userPos = null; // 現在地（あれば「移動少」を判定）
+let userPos = null; // 現在地（あれば「移動少」判定）
+let selectedHour = null; // タイムラインで選択中の時間
+let timelineHorizon = 6; // 表示する時間数
 
 // ---- 地図色＆ラベル ----
 function colorFor(yen){
-  // 0〜3000円/h を 0..1 に正規化（暫定マッピング）
+  // 0〜3000円/h を 0..1 に正規化（暫定）
   const v = Math.max(0, Math.min(1, (yen || 0) / 3000));
   const r = Math.floor(255 * v);
   const g = Math.floor(200 * v);
@@ -134,19 +165,19 @@ function haversineKm(lat1, lon1, lat2, lon2){
   return 2*R*Math.asin(Math.sqrt(a));
 }
 
-// ---- 理由タグ作成 ----
+// ---- 理由タグ ----
 function buildReasons(item){
   const reasons = [];
-  if(item.recent_hot) reasons.push('実績◎');
-  if(typeof item.hours === 'number' && item.hours >= 2) reasons.push('密度高');
-  if(userPos && item.lat!=null && item.lng!=null){
+  if(item?.recent_hot) reasons.push('実績◎');
+  if(typeof item?.hours === 'number' && item.hours >= 2) reasons.push('密度高');
+  if(userPos && item?.lat!=null && item?.lng!=null){
     const d = haversineKm(userPos.lat, userPos.lng, item.lat, item.lng);
     if(d <= 1.5) reasons.push('移動少');
   }
   return reasons.slice(0,2).join(' / ');
 }
 
-// ---- 分位点（p25/p50/p75）を計算 ----
+// ---- 分位点（p25/p50/p75） ----
 function quantiles(vals){
   if(!vals.length) return {p25:0,p50:0,p75:0,max:0};
   const a = vals.slice().sort((x,y)=>x-y);
@@ -161,18 +192,17 @@ function quantiles(vals){
 }
 function updateLegendStops(vals){
   const {p25,p50,p75,max} = quantiles(vals);
-  const fmt = v => `${Math.round(v)}`
+  const fmt = v => `${Math.round(v)}`;
   document.getElementById('stop-p25').textContent = fmt(p25);
   document.getElementById('stop-p50').textContent = fmt(p50);
   document.getElementById('stop-p75').textContent = fmt(p75);
   document.getElementById('stop-max').textContent = fmt(max);
 }
 
-// ---- マップ更新（現在の時間スロット可視化） ----
-async function loadMapForCurrentHour(){
-  const now = new Date();
-  const h = now.getHours();
-  const res = await fetch(`/api/areas/stats?hour=${h}`, {credentials:'same-origin'});
+// ---- 地図更新（任意の時間） ----
+async function loadMapForHour(hour){
+  selectedHour = hour;
+  const res = await fetch(`/api/areas/stats?hour=${hour}`, {credentials:'same-origin'});
   const js = await res.json();
 
   markersLayer.clearLayers();
@@ -192,12 +222,18 @@ async function loadMapForCurrentHour(){
     if(typeof it.hourly === 'number') hoursVals.push(it.hourly);
   });
 
-  // 凡例のしきい値（p25/p50/p75/max）更新
   updateLegendStops(hoursVals);
+  highlightActiveTimelineRow();
+}
+
+// ---- 現在時間のヒート ----
+async function loadMapForCurrentHour(){
+  const now = new Date();
+  await loadMapForHour(now.getHours());
 }
 
 // ---- 瞬間3エリア（今/30分後/1時間後） ----
-function calcHorizonHours(){
+function calcHorizonHours30(){
   const d = new Date();
   const h = d.getHours();
   const m = d.getMinutes();
@@ -233,16 +269,87 @@ function renderSlot(elId, item){
   `;
 }
 async function loadHorizonCards(){
-  const {h0, h30, h60} = calcHorizonHours();
+  const {h0, h30, h60} = calcHorizonHours30();
   const [i0, i30, i60] = await Promise.all([fetchTop1(h0), fetchTop1(h30), fetchTop1(h60)]);
   renderSlot('slot-now', i0);
   renderSlot('slot-30', i30);
   renderSlot('slot-60', i60);
 }
 
+// ---- タイムライン：時間配列を作る（今日中） ----
+function buildTimelineHours(count){
+  const d = new Date();
+  const start = d.getHours();
+  const arr = [];
+  for(let i=0;i<count;i++){
+    const h = start + i;
+    if(h > 23) break; // 今日中のみ
+    arr.push(h);
+  }
+  return arr;
+}
+
+// ---- タイムライン描画 ----
+function hLabel(h){ return `${String(h).padStart(2,'0')}:00`; }
+function tlRowHtml(h, item){
+  const title = item ? item.name : 'データ不足';
+  const muted = item ? `約 ${Math.round(item.hourly)} 円/h ・ サンプル ${item.hours} h` : '&nbsp;';
+  const reasons = item ? buildReasons(item) : '';
+  const hot = item?.recent_hot
+    ? '<span class="chip" style="margin-left:6px;background:#3b5c1a;color:#c8f5a2;border-color:#527c2a">実績◎</span>'
+    : '';
+  const zoomBtn = (item && item.lat!=null && item.lng!=null)
+    ? `<button class="btn">ズーム</button>` : '';
+
+  return `
+    <div class="tl-row" data-hour="${h}" ${item?.lat!=null?`data-lat="${item.lat}" data-lng="${item.lng}"`:''}>
+      <div class="tl-left">
+        <div class="tl-time chip">${hLabel(h)}</div>
+        <div>
+          <div style="font-weight:700">${title}${hot}</div>
+          <div class="muted" style="font-size:12px">${muted}</div>
+          ${reasons ? `<div style="font-size:12px;margin-top:4px">${reasons}</div>` : ''}
+        </div>
+      </div>
+      ${zoomBtn}
+    </div>
+  `;
+}
+async function loadTimeline(){
+  const box = document.getElementById('timeline');
+  box.innerHTML = '';
+
+  const hours = buildTimelineHours(timelineHorizon);
+  const promises = hours.map(h => fetchTop1(h));
+  const results = await Promise.all(promises);
+
+  const rows = hours.map((h,idx)=> tlRowHtml(h, results[idx]));
+  box.innerHTML = rows.join('');
+
+  // クリック挙動
+  box.querySelectorAll('.tl-row').forEach(row=>{
+    row.addEventListener('click', async (e)=>{
+      const h = Number(row.dataset.hour);
+      await loadMapForHour(h);
+      // ズーム（座標があれば）
+      const lat = row.dataset.lat ? Number(row.dataset.lat) : null;
+      const lng = row.dataset.lng ? Number(row.dataset.lng) : null;
+      if(lat!=null && lng!=null) fly(lat,lng);
+    });
+  });
+
+  highlightActiveTimelineRow();
+}
+function highlightActiveTimelineRow(){
+  document.querySelectorAll('.tl-row').forEach(el=> el.classList.remove('active'));
+  if(selectedHour==null) return;
+  const target = document.querySelector(`.tl-row[data-hour="${selectedHour}"]`);
+  if(target) target.classList.add('active');
+}
+
 // ---- 地図操作 ----
 function fly(lat,lng){
-  map.flyTo([lat,lng], 15, {duration: 0.7}); // KPI: 1秒以内にズーム完了
+  map.flyTo([lat,lng], 15, {duration: 0.7}); // KPI: 1秒以内
 }
 
 // ---- 現在地取得（任意） ----
@@ -266,11 +373,30 @@ function initGeolocation(){
   labelsLayer = L.layerGroup().addTo(map);
 
   initGeolocation();
-  loadMapForCurrentHour();
+
+  // 右ペイン：瞬間3エリア
   loadHorizonCards();
 
+  // 地図：現在時間のヒート
+  loadMapForCurrentHour();
+
+  // タイムライン
+  loadTimeline();
+  document.getElementById('tl-4h').addEventListener('click', ()=>{ timelineHorizon=4; loadTimeline(); });
+  document.getElementById('tl-6h').addEventListener('click', ()=>{ timelineHorizon=6; loadTimeline(); });
+  document.getElementById('tl-8h').addEventListener('click', ()=>{ timelineHorizon=8; loadTimeline(); });
+
   // 5分ごとに更新
-  setInterval(()=>{ setNowHour(); loadMapForCurrentHour(); loadHorizonCards(); }, 5*60*1000);
+  setInterval(()=>{
+    setNowHour();
+    loadHorizonCards();
+    // 選択中の時間が今なら更新、それ以外ならタイムラインだけ更新
+    const nowH = new Date().getHours();
+    if(selectedHour===null || selectedHour===nowH){
+      loadMapForCurrentHour();
+    }
+    loadTimeline();
+  }, 5*60*1000);
 })();
 </script>
 {% endblock %}

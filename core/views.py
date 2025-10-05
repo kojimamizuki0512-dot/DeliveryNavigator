@@ -12,6 +12,7 @@ from django.utils.dateparse import parse_date
 from django.core.files.base import ContentFile
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import TemplateView, FormView
+from django.views import View
 from django.urls import reverse_lazy
 from django.contrib.auth import get_user_model, login as auth_login
 from django.contrib.auth.forms import UserCreationForm
@@ -21,6 +22,7 @@ from rest_framework import viewsets, permissions, generics, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.views import APIView
 
 from django.db.models import Q, Sum
 from django.db import connection  # 既存データの修復に使用
@@ -36,7 +38,7 @@ from .serializers import (
     OcrImportInputSerializer,
 )
 
-# ---------- ユーティリティ（OCR） ----------
+# ---------- ユーティリティ ----------
 
 def _ensure_tesseract_path():
     """Windowsで tesseract.exe の場所を設定（settings優先 → 代表的パス → PATH）"""
@@ -59,60 +61,35 @@ def _ensure_tesseract_path():
             return
     # 見つからない場合は pytesseract 側で例外が発生
 
-def _ocr_with_tesseract(image_bytes: bytes) -> str:
-    """TesseractでOCR（日本語＋英語 / フォールバック用）"""
+def _ocr_image_to_text(image_bytes: bytes):
+    """
+    可能なら Google Vision、だめなら Tesseract にフォールバック。
+    戻り値: (text, provider)  provider は "google-vision" or "tesseract"
+    """
+    # --- 1) Google Vision ---
+    try:
+        if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+            from google.cloud import vision  # 遅延import
+            client = vision.ImageAnnotatorClient()
+            gimg = vision.Image(content=image_bytes)
+            resp = client.text_detection(image=gimg)
+            if getattr(resp, "error", None) and resp.error.message:
+                raise RuntimeError(resp.error.message)
+            if resp.text_annotations:
+                return resp.text_annotations[0].description, "google-vision"
+    except Exception:
+        # Vision が使えない・失敗 → Tesseract に落ちる
+        pass
+
+    # --- 2) Tesseract ---
     _ensure_tesseract_path()
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     cfg = "--psm 6"
     try:
-        return pytesseract.image_to_string(img, lang="jpn+eng", config=cfg)
+        return pytesseract.image_to_string(img, lang="jpn+eng", config=cfg), "tesseract"
     except Exception:
-        return pytesseract.image_to_string(img, lang="eng", config=cfg)
+        return pytesseract.image_to_string(img, lang="eng", config=cfg), "tesseract"
 
-def _ocr_with_google_vision(image_bytes: bytes) -> str:
-    """
-    Google Cloud VisionでOCR。
-    - 環境変数 GOOGLE_APPLICATION_CREDENTIALS が設定されていること（サービスアカウントJSONのパス）
-    - ライブラリが未インストール / 認証未設定なら ImportError / Exception を上位で拾ってフォールバック
-    """
-    try:
-        from google.cloud import vision
-    except Exception as e:
-        # ライブラリなし等
-        raise ImportError(f"google-cloud-vision not available: {e}")
-
-    client = vision.ImageAnnotatorClient()
-    image = vision.Image(content=image_bytes)
-    resp = client.text_detection(image=image)
-    if resp.error.message:
-        # Visionのエラーは例外化
-        raise RuntimeError(resp.error.message)
-    ann = resp.text_annotations
-    if ann:
-        return ann[0].description  # 最初の要素が全文
-    return ""
-
-def _ocr_image_to_text(image_bytes: bytes):
-    """
-    まず Google Vision、失敗したら Tesseract。
-    戻り値: (text: str, provider: str, fallback_error: str|None)
-    """
-    # 1) Google Vision（環境変数が未設定でも client 生成時に例外）
-    try:
-        text = _ocr_with_google_vision(image_bytes)
-        if text and text.strip():
-            return text, "google-vision", None
-        # 空読みなら Tesseract に回す
-        t = _ocr_with_tesseract(image_bytes)
-        return t, "tesseract", "vision-empty"
-    except Exception as e:
-        # Visionが使えない / エラー → Tesseract
-        try:
-            t = _ocr_with_tesseract(image_bytes)
-            return t, "tesseract", f"vision-error: {e}"
-        except Exception as e2:
-            # どちらも失敗
-            return "", "none", f"vision-error: {e} / tesseract-error: {e2}"
 
 def _parse_numbers(text: str):
     """
@@ -179,6 +156,51 @@ def _parse_numbers(text: str):
 
     return {"date": date, "orders": orders, "earnings": earnings, "hours": hours}
 
+
+def _parse_times(text: str):
+    """
+    OCR文字列から start/end の候補を抜く。
+    例:
+      10:00-14:30 / 10:00 ~ 14:30 / 10時〜14時 / Start: 10:00 End: 14:30
+    """
+    norm = (
+        text.replace("：", ":")
+            .replace("〜", "-")
+            .replace("~", "-")
+            .replace("—", "-")
+            .replace("–", "-")
+    )
+
+    candidates = []
+
+    # hh:mm を順番に拾う
+    for hh, mm in re.findall(r"(\d{1,2}):(\d{2})", norm):
+        h, m = int(hh), int(mm)
+        if 0 <= h < 24 and 0 <= m < 60:
+            candidates.append(datetime.time(h, m))
+
+    # 日本語の「10時30分」/「10時」
+    for hh, mm in re.findall(r"(\d{1,2})\s*時\s*(\d{1,2})?\s*分?", norm):
+        h = int(hh)
+        m = int(mm) if mm else 0
+        if 0 <= h < 24 and 0 <= m < 60:
+            candidates.append(datetime.time(h, m))
+
+    # 「10 - 14」のように時だけ
+    m = re.search(r"\b(\d{1,2})\s*[-–~]\s*(\d{1,2})\b", norm)
+    if m:
+        h1, h2 = int(m.group(1)), int(m.group(2))
+        if 0 <= h1 < 24 and 0 <= h2 < 24:
+            if len(candidates) < 1:
+                candidates.append(datetime.time(h1, 0))
+            if len(candidates) < 2:
+                candidates.append(datetime.time(h2, 0))
+
+    start = candidates[0] if len(candidates) >= 1 else None
+    end   = candidates[1] if len(candidates) >= 2 else None
+    return start, end
+
+
 # Decimal を安全に作る
 Q2 = Decimal("0.01")
 def _to_decimal_or_none(val):
@@ -193,6 +215,7 @@ def _to_decimal_or_none(val):
         return d.quantize(Q2, rounding=ROUND_HALF_UP)
     except (InvalidOperation, ValueError, TypeError):
         return None
+
 
 def _repair_decimal_columns():
     """既存データの不正値を安全に修復する。"""
@@ -210,6 +233,24 @@ def _repair_decimal_columns():
             )
     except Exception:
         pass
+
+
+def _add_hours_to_time(t: datetime.time, hours: float) -> datetime.time:
+    """time + hours を 24h で丸めて返す"""
+    minutes = int(round(hours * 60))
+    total = t.hour * 60 + t.minute + minutes
+    total %= (24 * 60)
+    return datetime.time(total // 60, total % 60)
+
+
+def _time_diff_in_hours(start: datetime.time, end: datetime.time) -> float:
+    """end - start（時間）。日またぎの場合は24hを加味"""
+    s = start.hour * 60 + start.minute
+    e = end.hour * 60 + end.minute
+    if e < s:
+        e += 24 * 60
+    return round((e - s) / 60.0, 2)
+
 
 # ---------- API ----------
 
@@ -300,21 +341,20 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
             sh = r.start_time.hour + r.start_time.minute / 60.0
             eh = r.end_time.hour + r.end_time.minute / 60.0
 
-            # 同日内のみ（えいっで丸め）。終了<=開始なら hours_worked で補完
+            # 同日内のみ。終了<=開始なら hours_worked で補完
             if eh <= sh:
-                dur = float(r.hours_worked or 0) or 0.0
-                if dur <= 0:
+                dur_from_hours = float(r.hours_worked or 0) or 0.0
+                if dur_from_hours <= 0:
                     continue
-                eh = min(24.0, sh + dur)
+                eh = min(24.0, sh + dur_from_hours)
 
             dur = max(0.0, eh - sh)
             if dur <= 0:
                 continue
 
             wd = r.date.weekday()  # 0=Mon
-            # 時給を時間配分して加算
             earn = float(r.earnings)
-            for h in range(max(0, int(floor(sh))), min(24, int(ceil(eh)))):
+            for h in range(max(0, floor(sh)), min(24, ceil(eh))):
                 # その時間枠にどれくらい被っているか（0..1）
                 left = max(sh, h)
                 right = min(eh, h + 1)
@@ -344,8 +384,8 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
         slots.sort(reverse=True, key=lambda x: x[0])
         name = ["月","火","水","木","金","土","日"]
         top = []
-        for i, (v, wd, h, hrs) in enumerate(slots[:3]):
-            top.append({"label": f"{name[wd]} {h:02d}:00", "hourly": round(v), "hours": round(hrs,1)})
+        for v, wd, h, hrs in slots[:3]:
+            top.append({"label": f"{name[wd]} {h:02d}:00", "hourly": round(v), "hours": round(hrs, 1)})
 
         return Response({
             "values": values,
@@ -353,6 +393,7 @@ class DeliveryRecordViewSet(viewsets.ModelViewSet):
             "vmax": round(vmax),
             "top_slots": top,
         })
+
 
 class EntranceInfoViewSet(viewsets.ModelViewSet):
     serializer_class = EntranceInfoSerializer
@@ -368,6 +409,7 @@ class EntranceInfoViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+
 class MeView(generics.RetrieveUpdateAPIView):
     serializer_class = UserPublicSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -375,24 +417,29 @@ class MeView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return self.request.user
 
+
 # ---------- 画面（ユーザー向け） ----------
 
 class DashboardView(LoginRequiredMixin, TemplateView):
     login_url = '/login/'
     template_name = 'dashboard.html'
 
+
 class MapView(LoginRequiredMixin, TemplateView):
     login_url = '/login/'
     template_name = 'map.html'
+
 
 class UploadView(LoginRequiredMixin, TemplateView):
     login_url = '/login/'
     template_name = 'upload.html'
 
+
 class RecordsView(LoginRequiredMixin, TemplateView):
     """実績一覧/編集（フロントはAPI呼び出し）"""
     login_url = '/login/'
     template_name = 'records.html'
+
 
 # ---------- サインアップ（UI） ----------
 
@@ -403,27 +450,23 @@ class SignUpForm(UserCreationForm):
         model = get_user_model()
         fields = ("username", "email")  # password1/password2 は UserCreationForm が持つ
 
+
 class SignUpView(FormView):
     template_name = "signup.html"
     form_class = SignUpForm
-    # 登録後はトップへ
-    success_url = reverse_lazy("home")
+    success_url = reverse_lazy("home")  # 登録後はトップへ
 
     def form_valid(self, form):
         user = form.save()
         auth_login(self.request, user)  # 登録後そのままログイン
         return super().form_valid(form)
 
+
 # ---------- OCR 取り込み ----------
 
 class OcrImportView(generics.GenericAPIView):
     """
     POST /api/ocr/import/
-      - multipart/form-data:
-          - image: ファイル
-          - date (任意): YYYY-MM-DD
-          - hours_worked (任意): 数値文字列（小数可）
-      - 動作: Google Vision → 失敗時 Tesseract の順でOCRし、既存レコード(date)にUpsert
     """
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -438,41 +481,53 @@ class OcrImportView(generics.GenericAPIView):
         image = s.validated_data["image"]
         date_override = s.validated_data.get("date")
 
-        hours_raw = s.validated_data.get("hours_worked")
-        hours_override = None
-        if hours_raw is not None:
-            try:
-                if isinstance(hours_raw, str) and hours_raw.strip() == "":
-                    hours_override = None
-                else:
-                    hours_override = float(str(hours_raw).strip())
-            except Exception:
-                hours_override = None
+        hours_override = s.validated_data.get("hours_worked")
+        start_override = s.validated_data.get("start_time")
+        end_override   = s.validated_data.get("end_time")
+        area_slug      = s.validated_data.get("area_slug")
+        area_name      = s.validated_data.get("area_name")
 
         data = image.read()
-
-        # --- OCR（Vision→Tesseract） ---
-        raw_text, provider, fb_error = _ocr_image_to_text(data)
-
+        raw_text, provider = _ocr_image_to_text(data)
         parsed = _parse_numbers(raw_text)
+        p_start, p_end = _parse_times(raw_text)
+
+        # 優先順位: フォーム上書き > OCR推定
+        start_time = start_override or p_start
+        end_time   = end_override or p_end
 
         if date_override:
             parsed["date"] = date_override
-        if hours_override is not None:
-            parsed["hours"] = hours_override
 
         date = parsed["date"] or datetime.date.today()
 
+        # 時刻と時間の補完ロジック
+        hours_val = float(hours_override) if hours_override is not None else parsed["hours"]
+
+        if (start_time is not None) and (end_time is None) and (hours_val is not None):
+            end_time = _add_hours_to_time(start_time, float(hours_val))
+        elif (end_time is not None) and (start_time is None) and (hours_val is not None):
+            # end - hours → start
+            back = _add_hours_to_time(end_time, -float(hours_val))
+            start_time = back
+
+        # hours が無ければ、start/end から逆算
+        if (hours_val is None) and (start_time is not None) and (end_time is not None):
+            hours_val = _time_diff_in_hours(start_time, end_time)
+
+        # DB 用デフォルト
         defaults = {}
         if parsed["orders"] is not None:
             defaults["orders_completed"] = int(parsed["orders"])
         dec = _to_decimal_or_none(parsed["earnings"])
         if dec is not None:
             defaults["earnings"] = dec
-        dec = _to_decimal_or_none(parsed["hours"])
+
+        dec = _to_decimal_or_none(hours_val)
         if dec is not None:
             defaults["hours_worked"] = dec
 
+        # 既存の同日レコードをUpsert
         existing_id = (
             DeliveryRecord.objects
             .filter(user=request.user, date=date)
@@ -501,29 +556,45 @@ class OcrImportView(generics.GenericAPIView):
             if dec is not None:
                 rec.earnings = dec
                 updated_fields.append("earnings")
-            dec = _to_decimal_or_none(parsed["hours"])
+            dec = _to_decimal_or_none(hours_val)
             if dec is not None:
                 rec.hours_worked = dec
                 updated_fields.append("hours_worked")
-            if updated_fields:
-                rec.save(update_fields=updated_fields)
 
-        # OCRインポート履歴
+        # 時刻・エリアの反映
+        if start_time is not None:
+            rec.start_time = start_time
+            if "start_time" not in updated_fields:
+                updated_fields.append("start_time")
+        if end_time is not None:
+            rec.end_time = end_time
+            if "end_time" not in updated_fields:
+                updated_fields.append("end_time")
+
+        # モデルに area_slug / area_name フィールドがある場合のみ反映
+        # （なければ無視される）
+        if hasattr(rec, "area_slug") and area_slug:
+            rec.area_slug = area_slug
+            updated_fields.append("area_slug")
+        if hasattr(rec, "area_name") and area_name:
+            rec.area_name = area_name
+            updated_fields.append("area_name")
+
+        if updated_fields:
+            rec.save(update_fields=updated_fields)
+
         job = OcrImport(user=request.user, status="success")
-        # 画像保存ポリシー：まずは保存（プライバシー方針に応じて後日切替）
         job.image.save(image.name, ContentFile(data))
         job.raw_text = raw_text
         job.parsed_json = {
             "date": date.isoformat(),
             "orders": parsed["orders"],
             "earnings": parsed["earnings"],
-            "hours": parsed["hours"],
+            "hours": hours_val,
+            "start_time": None if start_time is None else start_time.isoformat(),
+            "end_time": None if end_time is None else end_time.isoformat(),
             "provider": provider,
         }
-        msg = f"provider={provider}"
-        if fb_error:
-            msg += f" / note={fb_error}"
-        job.message = msg
         job.created_record = rec
         job.save()
 
@@ -536,3 +607,64 @@ class OcrImportView(generics.GenericAPIView):
             "parsed": job.parsed_json,
             "raw_text": raw_text,
         }, status=status.HTTP_201_CREATED)
+
+
+# ---------- Areas（地図用エリア定義の配信） ----------
+
+class AreasListView(LoginRequiredMixin, View):
+    """
+    GET /api/areas/
+    core/areas.py の AREAS（静的 or 途中までの仮データ）を返すだけの最小実装。
+    将来はDB/推論スコアをここに載せる。
+    """
+    login_url = '/login/'
+
+    def get(self, request):
+        try:
+            from .areas import AREAS
+        except Exception:
+            AREAS = []
+        return JsonResponse({"areas": AREAS})
+
+
+class AreasStatsView(APIView):
+    """
+    GET /api/areas/stats/?hour=15&top=3
+    ひとまず公開GETで返すダミー実装（集計ロジックは後で実データに差し替え）。
+    """
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        try:
+            from .areas import AREAS
+        except Exception:
+            AREAS = []
+
+        # hour, top のパラメータ
+        try:
+            hour = int(request.GET.get("hour", datetime.datetime.now().hour))
+            hour = max(0, min(23, hour))
+        except Exception:
+            hour = datetime.datetime.now().hour
+
+        try:
+            top_n = int(request.GET.get("top", 3))
+            top_n = max(1, min(5, top_n))
+        except Exception:
+            top_n = 3
+
+        # TODO: 実データからのスコアに差し替える
+        items = []
+        for a in AREAS:
+            items.append({
+                "id": a.get("id"),
+                "name": a.get("name"),
+                "center": a.get("center"),
+                "score": 0.0,
+                "hour": hour,
+                "reason": "データ準備中（ダミー）",
+            })
+
+        top = items[:top_n]
+        return Response({"hour": hour, "top": top, "items": items})

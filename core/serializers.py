@@ -46,7 +46,23 @@ class EntranceInfoSerializer(serializers.ModelSerializer):
 
 
 # --- OCR Import input ---
+# core/serializers.py （抜粋：OcrImportInputSerializer のみ差し替え）
+
 class OcrImportInputSerializer(serializers.Serializer):
-    image = serializers.ImageField()
+    """
+    OCR取込の入力。
+    - image: 必須
+    - date / hours_worked: 任意
+    - start_time / end_time: 任意（HH:MM）
+    - area_slug / area_name: 任意（将来のエリア紐づけ用）
+    """
+    image = serializers.ImageField(required=True)
     date = serializers.DateField(required=False, allow_null=True)
-    hours_worked = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    hours_worked = serializers.DecimalField(required=False, allow_null=True, max_digits=5, decimal_places=2)
+
+    start_time = serializers.TimeField(required=False, allow_null=True)
+    end_time   = serializers.TimeField(required=False, allow_null=True)
+
+    area_slug = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=64)
+    area_name = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=128)
+

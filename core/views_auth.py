@@ -1,4 +1,3 @@
-# core/views_auth.py
 from django.contrib.auth import login
 from django.contrib.auth.forms import UserCreationForm
 from django.views.generic import FormView

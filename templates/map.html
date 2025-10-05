@@ -3,21 +3,22 @@
 {% block extra_head %}
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <style>
-    .map-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px}
-    #mapFull{width:100%;height:72vh;border-radius:var(--radius)}
-    .legend{display:inline-flex;gap:8px;align-items:center;margin:8px 0 12px}
-    .legend-item{border-radius:999px;padding:6px 12px;font-size:12px;border:1px solid var(--border)}
-    .legend-low{background:repeating-linear-gradient(45deg,#e5e7eb,#e5e7eb 6px,#f8fafc 6px,#f8fafc 12px);color:#374151}
-    .legend-mid{background:repeating-linear-gradient(45deg,#f6e9d4,#f6e9d4 6px,#fff3e0 6px,#fff3e0 12px);color:#8a5a18}
-    .legend-high{background:repeating-linear-gradient(45deg,#d8f3dc,#d8f3dc 6px,#c7f6e2 6px,#c7f6e2 12px);color:#065f46}
+    .map-wrap{background:linear-gradient(180deg,rgba(126,226,190,.08),transparent) ,var(--surface);
+      border:1px solid var(--border);border-radius:20px;padding:14px;box-shadow: var(--shadow-2);}
+    #mapFull{width:100%;height:72vh;border-radius:16px}
+    .legend{display:flex;gap:10px;align-items:center;margin:6px 0 12px}
+    .legend-item{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:6px 12px;
+      font-size:12px;border:1px solid var(--border);background:var(--surface)}
+    .dot{width:10px;height:10px;border-radius:999px}
+    .low{background:#9ca3af}.mid{background:#c4852e}.high{background:#18a058}
   </style>
 {% endblock %}
 {% block content %}
 <div class="map-wrap">
-  <div class="legend" aria-label="凡例">
-    <span class="legend-item legend-low">低</span>
-    <span class="legend-item legend-mid">中</span>
-    <span class="legend-item legend-high">高</span>
+  <div class="legend">
+    <span class="legend-item"><span class="dot low"></span>低</span>
+    <span class="legend-item"><span class="dot mid"></span>中</span>
+    <span class="legend-item"><span class="dot high"></span>高</span>
   </div>
   <div id="mapFull"></div>
 </div>
@@ -29,7 +30,10 @@
   const levelColor = (w)=> (w>=1800 ? '#18a058' : (w>=1600 ? '#c4852e' : '#9ca3af'));
   const centerTokyo = [35.681236,139.767125];
   const map = L.map('mapFull').setView(centerTokyo, 12);
-  const light = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{ attribution:'&copy; OpenStreetMap & Carto', maxZoom:19 }).addTo(map);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; OpenStreetMap & Carto',maxZoom:19
+  }).addTo(map);
+
   const markers=[];
   (DN_DATA.areas || []).forEach(it=>{
     const name = it.area || 'エリア';

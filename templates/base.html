@@ -6,70 +6,67 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}Delivery Navigator{% endblock %}</title>
   <meta name="color-scheme" content="light dark" />
-  <meta name="theme-color" content="#1E3932" />
-  <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+  <meta name="theme-color" content="#0F1A18" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700&family=Inter:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'css/theme.css' %}">
   {% block extra_head %}{% endblock %}
 </head>
 <body>
   <a href="#main" class="skip">本文へスキップ</a>
 
-  <header class="navbar" role="banner">
+  <header class="navbar">
     <div class="nav-left">
-      <a class="brand" href="{% url 'home' %}" aria-label="Delivery Navigator トップ">DN</a>
-      <button class="nav-toggle" aria-expanded="false" aria-controls="navLinks" aria-label="メニューを開閉">☰</button>
-      <nav id="navLinks" class="nav-links" role="navigation" aria-label="メイン">
+      <a class="brand" href="{% url 'home' %}">DN</a>
+      <nav id="navLinks" class="nav-links">
         <a href="{% url 'map' %}">マップ</a>
-        <a href="{% url 'upload' %}">データ読み込み</a>
+        <a href="{% url 'upload' %}">読み込み</a>
         <a href="{% url 'records' %}">記録</a>
         <a href="{% url 'dashboard' %}">ダッシュボード</a>
       </nav>
     </div>
     <div class="nav-right">
       {% if user.is_authenticated %}
-        <span class="muted" style="font-size:12px;">{{ user.username }} さん</span>
+        <span class="muted small">{{ user.username }} さん</span>
         <a class="btn btn-outline btn-sm" href="{% url 'logout' %}">ログアウト</a>
       {% else %}
         <a class="btn btn-outline btn-sm" href="{% url 'login' %}">ログイン</a>
         <a class="btn btn-primary btn-sm" href="{% url 'signup' %}">新規登録</a>
       {% endif %}
-      <label class="theme-toggle" title="テーマ切替">
-        <input id="themeSwitch" type="checkbox" aria-label="テーマ切替（Espresso/Latte）" />
-        <span class="slider" aria-hidden="true"></span>
-        <span class="toggle-label">Espresso</span>
+      <button class="nav-toggle" aria-expanded="false" aria-controls="navLinks">☰</button>
+      <label class="theme-toggle">
+        <input id="themeSwitch" type="checkbox" />
+        <span class="slider"></span><span class="toggle-label">Espresso</span>
       </label>
     </div>
   </header>
 
-  <main id="main" class="container" role="main">
+  <main id="main" class="container fade-in">
     {% block content %}{% endblock %}
   </main>
 
-  <nav class="tabbar" aria-label="クイックナビ">
+  <nav class="tabbar">
     <a data-tab="/" href="{% url 'home' %}">ホーム</a>
     <a data-tab="/map/" href="{% url 'map' %}">マップ</a>
     <a data-tab="/upload/" href="{% url 'upload' %}">読み込み</a>
     <a data-tab="/records/" href="{% url 'records' %}">記録</a>
   </nav>
 
-  <footer class="footer" role="contentinfo">
-    <div class="container">
-      <div class="footer-grid">
-        <div class="footer-col">
-          <div class="brand brand--footer" aria-hidden="true">DN</div>
-          <p class="muted">出発前30秒で、今日の稼ぎ方が決まる。</p>
-        </div>
-        <div class="footer-col">
-          <a href="{% url 'map' %}">マップ</a>
-          <a href="{% url 'upload' %}">データ読み込み</a>
-          <a href="{% url 'records' %}">記録</a>
-          <a href="{% url 'dashboard' %}">ダッシュボード</a>
-        </div>
-        <div class="footer-col">
-          <p class="muted">© {{ now|date:'Y' }} Delivery Navigator</p>
-        </div>
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div class="footer-col">
+        <div class="brand brand--footer">DN</div>
+        <p class="muted">出発前30秒で、今日の稼ぎ方が決まる。</p>
+      </div>
+      <div class="footer-col">
+        <a href="{% url 'map' %}">マップ</a>
+        <a href="{% url 'upload' %}">読み込み</a>
+        <a href="{% url 'records' %}">記録</a>
+        <a href="{% url 'dashboard' %}">ダッシュボード</a>
+      </div>
+      <div class="footer-col">
+        <p class="muted small">© {{ now|date:'Y' }} Delivery Navigator</p>
       </div>
     </div>
   </footer>

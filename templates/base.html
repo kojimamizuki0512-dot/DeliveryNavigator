@@ -1,107 +1,75 @@
 {% load static %}
-<!doctype html>
-<html lang="ja">
+<!DOCTYPE html>
+<html lang="ja" data-theme="latte">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}Delivery Navigator{% endblock %}</title>
-  <link rel="icon" href="{% static 'favicon.ico' %}">
-  <style>
-    :root{
-      --bg:#0b162f; --panel:#0f1e3d; --card:#13244a; --ink:#e6edf3;
-      --muted:#9fb3c8; --line:#1f2e56; --accent:#4cc9f0;
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{margin:0;background:var(--bg);color:var(--ink);
-      font:14px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-    a{color:inherit;text-decoration:none}
-    .wrap{max-width:1100px;margin:0 auto;padding:16px}
-    .nav{background:#0e1b36;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
-    .brand{font-weight:800;letter-spacing:.2px}
-    .nav ul{display:flex;gap:14px;list-style:none;margin:0;padding:0}
-    .nav a.active{color:var(--accent)}
-    .btn{display:inline-flex;align-items:center;gap:6px;padding:.56rem .84rem;border-radius:10px;background:#1c2d57;color:#fff;border:1px solid #2b3d6a;cursor:pointer;transition:.15s}
-    .btn:hover{filter:brightness(1.06)}
-    .btn.primary{background:linear-gradient(135deg,#2b6cb0,#3182ce);border-color:#2b6cb0}
-    .btn.ghost{background:transparent;border:1px solid var(--line)}
-    .chip{display:inline-block;padding:.22rem .56rem;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--muted)}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
-    .grid{display:grid;gap:12px}
-    .grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
-    .grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
-    @media (max-width:900px){.grid.cols-3,.grid.cols-2{grid-template-columns:1fr}}
-    .muted{color:var(--muted)}
-    footer{color:var(--muted);padding:26px 0;border-top:1px solid var(--line);margin-top:28px}
-    table{width:100%;border-collapse:collapse;border:1px solid var(--line);border-radius:12px;overflow:hidden}
-    thead th{background:#11234a;color:#cfe3ff;text-align:left;padding:10px;border-bottom:1px solid var(--line)}
-    tbody td{padding:10px;border-bottom:1px solid var(--line)}
-    tbody tr:hover{background:#0e1f41}
-    input,select{width:100%;background:#0e1f41;border:1px solid var(--line);color:var(--ink);padding:.56rem .62rem;border-radius:10px}
-    input:focus,select:focus{outline:2px solid #3059b4;outline-offset:1px}
-    label{font-size:12px;color:#b7c6de}
-    .row{display:flex;gap:10px;flex-wrap:wrap}
-    .fullbleed{position:relative;left:50%;right:50%;margin-left:-50vw;margin-right:-50vw;width:100vw}
-    .hero{position:relative;border-radius:0;overflow:hidden;border-bottom:1px solid var(--line)}
-    .hero--fullscreen{min-height:92vh}
-    .hero-art{position:absolute;inset:0}
-    .hero-art svg{width:100%;height:100%;display:block}
-    .hero-overlay{
-      position:absolute; inset:0; display:flex; align-items:end;
-      background:linear-gradient(180deg,rgba(7,12,24,0.05) 0%, rgba(7,12,24,0.45) 60%, rgba(7,12,24,0.70) 100%);
-    }
-    @media (max-width:900px){
-      .hero--fullscreen{min-height:80vh}
-      .hero-overlay{align-items:flex-end}
-    }
-  </style>
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#1E3932" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
+  <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
-  <nav class="nav">
-    <div class="wrap" style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
-      <a class="brand" href="{% url 'home' %}">Delivery Navigator</a>
-      <ul>
-        <li><a href="{% url 'home' %}" class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">ホーム</a></li>
-        <li><a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">ダッシュボード</a></li>
-        <li><a href="{% url 'map' %}" class="{% if request.resolver_match.url_name == 'map' %}active{% endif %}">AIマップ</a></li>
-        <li><a href="/records" class="{% if request.path|slice:':8' == '/records' %}active{% endif %}">データ</a></li>
-        <li><a href="/upload"  class="{% if request.path|slice:':7' == '/upload' %}active{% endif %}">取込</a></li>
-      </ul>
-      <div>
-        {% if request.user.is_authenticated %}
-          <span class="muted">こんにちは、{{ request.user.username }}さん</span>
-          <a class="btn" href="{% url 'logout' %}">ログアウト</a>
-        {% else %}
-          <a class="btn ghost" href="{% url 'login' %}">ログイン</a>
-          <a class="btn primary" href="{% url 'signup' %}" style="margin-left:8px">新規登録</a>
-        {% endif %}
-      </div>
-    </div>
-  </nav>
+  <a href="#main" class="skip">本文へスキップ</a>
 
-  <main class="wrap">
-    {% block header %}{% endblock %}
+  <header class="navbar" role="banner">
+    <div class="nav-left">
+      <a class="brand" href="{% url 'home' %}" aria-label="Delivery Navigator トップ">DN</a>
+      <button class="nav-toggle" aria-expanded="false" aria-controls="navLinks" aria-label="メニューを開閉">☰</button>
+      <nav id="navLinks" class="nav-links" role="navigation" aria-label="メイン">
+        <a href="/map">マップ</a>
+        <a href="/upload/">データ読み込み</a>
+        <a href="/records">記録</a>
+        <a href="/dashboard">ダッシュボード</a>
+      </nav>
+    </div>
+    <div class="nav-right">
+      {% if user.is_authenticated %}
+        <span class="muted" style="font-size:12px;">{{ user.username }} さん</span>
+        <a class="btn btn-outline btn-sm" href="{% url 'logout' %}">ログアウト</a>
+      {% else %}
+        <a class="btn btn-outline btn-sm" href="{% url 'login' %}">ログイン</a>
+        <a class="btn btn-primary btn-sm" href="{% url 'signup' %}">新規登録</a>
+      {% endif %}
+      <label class="theme-toggle" title="テーマ切替">
+        <input id="themeSwitch" type="checkbox" aria-label="テーマ切替（Espresso/Latte）" />
+        <span class="slider" aria-hidden="true"></span>
+        <span class="toggle-label">Espresso</span>
+      </label>
+      {% block nav_actions %}{% endblock %}
+    </div>
+  </header>
+
+  <main id="main" class="container" role="main">
     {% block content %}{% endblock %}
   </main>
 
-  <footer>
-    <div class="wrap muted">© {{ now|date:"Y" }} Delivery Navigator</div>
+  <footer class="footer" role="contentinfo">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <div class="brand brand--footer" aria-hidden="true">DN</div>
+          <p class="muted">出発前30秒で、今日の稼ぎ方が決まる。</p>
+        </div>
+        <div class="footer-col">
+          <a href="/map">マップ</a>
+          <a href="/upload/">データ読み込み</a>
+          <a href="/records">記録</a>
+          <a href="/dashboard">ダッシュボード</a>
+        </div>
+        <div class="footer-col">
+          <p class="muted">© {{ now|date:'Y' }} Delivery Navigator</p>
+        </div>
+      </div>
+    </div>
   </footer>
 
-  <!-- CSRF: cookie を確実に発行させる（hidden input を置くだけ） -->
-  <form style="display:none">{% csrf_token %}</form>
-
-  <script>
-    // グローバル関数：CSRF トークンを取得（cookie > hidden input）
-    window.getCsrfToken = function(){
-      // 1) cookie
-      const m = document.cookie.match(/(^|;)\s*csrftoken=([^;]+)/);
-      if (m) return decodeURIComponent(m[2]);
-      // 2) hidden input から
-      const el = document.querySelector('input[name="csrfmiddlewaretoken"]');
-      if (el && el.value) return el.value;
-      return '';
-    }
-  </script>
+  <script defer src="{% static 'js/theme.js' %}"></script>
+  {% block extra_js %}{% endblock %}
 </body>
 </html>

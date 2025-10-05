@@ -1,39 +1,67 @@
-{% extends "base.html" %}
-{% block title %}実績入力 | Delivery Navigator{% endblock %}
+{% extends 'base.html' %}
+{% block title %}マップ | Delivery Navigator{% endblock %}
+
+
 {% block content %}
-<main class="container" style="max-width: 720px; margin: 2rem auto; padding: 1rem;">
-  <h1 style="margin-bottom: 1rem;">実績を入力</h1>
+<section class="section-head">
+<h2>ヒートマップ</h2>
+<p class="muted">強度は色と模様で表現。エリアをタップして詳細カードを表示。</p>
+</section>
 
-  {% if form.non_field_errors %}
-    <div style="padding: .75rem; border: 1px solid #f99; background: #fee; border-radius: 8px; margin-bottom: 1rem;">
-      {% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}
-    </div>
-  {% endif %}
 
-  <form method="post" novalidate>
-    {% csrf_token %}
+<div class="legend" aria-label="ヒート凡例">
+<span class="legend-item legend-low">低</span>
+<span class="legend-item legend-mid">中</span>
+<span class="legend-item legend-high">高</span>
+</div>
 
-    <div style="display:grid; gap: 1rem;">
-      <label>日付<span style="color:#e33">*</span><br>{{ form.date }}{% if form.date.errors %}<div style="color:#e33;">{{ form.date.errors|striptags }}</div>{% endif %}</label>
-      <label>売上（円）<span style="color:#e33">*</span><br>{{ form.earnings }}{% if form.earnings.errors %}<div style="color:#e33;">{{ form.earnings.errors|striptags }}</div>{% endif %}</label>
-      <label>件数<span style="color:#e33">*</span><br>{{ form.orders_completed }}{% if form.orders_completed.errors %}<div style="color:#e33;">{{ form.orders_completed.errors|striptags }}</div>{% endif %}</label>
 
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-        <label>開始時刻<br>{{ form.start_time }}</label>
-        <label>終了時刻<br>{{ form.end_time }}</label>
-      </div>
+<div id="mapRoot" class="map-root" data-endpoint="/api/areas/stats?mode=base"></div>
+<div id="mapPanel" class="map-panel hidden" aria-live="polite"></div>
+{% endblock %}
 
-      <label>稼働時間（h）<br>{{ form.hours_worked }}</label>
 
-      <label>エリア（任意）<br>{{ form.area_slug }}</label>
+{% block extra_js %}
+<script>
+// シンプルグリッド擬似マップ（将来Leaflet/MapLibre置換可）
+(async function(){
+const root = document.getElementById('mapRoot');
+const panel = document.getElementById('mapPanel');
+if (!root) return;
+try {
+const r = await fetch(root.dataset.endpoint, { credentials: 'same-origin' });
+const data = await r.json();
+const items = Array.isArray(data.items) ? data.items : (Array.isArray(data) ? data : []);
 
-      <label>メモ（任意）<br>{{ form.note }}</label>
-    </div>
 
-    <div style="margin-top: 1.25rem; display:flex; gap:.75rem;">
-      <button type="submit" class="btn primary">登録する</button>
-      <a href="{% url 'dashboard' %}" class="btn">ダッシュボードへ</a>
-    </div>
-  </form>
-</main>
+// 6x8のタイルに投影（ダミー）: intensity=low/mid/high を想定
+const cols = 6, rows = 8; let html = '';
+for (let i=0;i<rows*cols;i++) {
+const it = items[i % Math.max(1, items.length)] || {};
+const lv = it.level || (i%3===0?'high':i%3===1?'mid':'low');
+html += `<button class="tile tile--${lv}" aria-label="${it.area||'エリア'}: ${lv}" data-area="${it.area||''}" data-wage="${it.wage_per_h||''}"></button>`;
+}
+root.innerHTML = html;
+
+
+root.addEventListener('click', (e)=>{
+const t = e.target.closest('.tile');
+if (!t) return;
+const area = t.dataset.area || 'サンプルエリア';
+const wage = t.dataset.wage ? '¥'+t.dataset.wage : '—';
+panel.innerHTML = `
+<article class="card">
+<div class="card-head"><span class="badge">Now</span><h3>${area}</h3></div>
+<div class="card-metrics">
+<div><span class="k">${wage}</span><span class="l">/h</span></div>
+<div><span class="k">低</span><span class="l">ロング率</span></div>
+<div><span class="k">+5%</span><span class="l">前週比</span></div>
+</div>
+<a class="btn btn-primary btn-sm" href="/">このエリアで開始</a>
+</article>`;
+panel.classList.remove('hidden');
+});
+} catch(e){ console.warn(e); }
+})();
+</script>
 {% endblock %}

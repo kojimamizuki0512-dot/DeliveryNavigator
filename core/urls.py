@@ -1,24 +1,13 @@
-# core/urls.py
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-
-from .views import (
-    DeliveryRecordViewSet,
-    EntranceInfoViewSet,
-    MeView,
-    OcrImportView,
-    AreasListView,
-    AreasStatsView,  # ← 追加
-)
-
-router = DefaultRouter()
-router.register(r"deliveries", DeliveryRecordViewSet, basename="deliveries")
-router.register(r"entrances", EntranceInfoViewSet, basename="entrances")
+from django.urls import path
+from django.views.generic import TemplateView
+from django.contrib.auth import views as auth_views
+from .views_auth import SignupView
 
 urlpatterns = [
-    path("", include(router.urls)),
-    path("me/", MeView.as_view(), name="me"),
-    path("ocr/import/", OcrImportView.as_view(), name="ocr-import"),
-    path("areas/", AreasListView.as_view(), name="areas-list"),
-    path("areas/stats/", AreasStatsView.as_view(), name="areas-stats"),  # ← 追加
+    path("", TemplateView.as_view(template_name="home.html"), name="home"),
+
+    # 認証
+    path("accounts/login/",  auth_views.LoginView.as_view(template_name="registration/login.html"), name="login"),
+    path("accounts/logout/", auth_views.LogoutView.as_view(next_page="home"), name="logout"),
+    path("accounts/signup/", SignupView.as_view(), name="signup"),
 ]

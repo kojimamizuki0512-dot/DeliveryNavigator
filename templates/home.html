@@ -1,402 +1,201 @@
-{% extends "base.html" %}
-{% load static %}
-{% block title %}Delivery Navigator — いま稼げる地域{% endblock %}
+{% extends 'base.html' %}
+{% block title %}ホーム | Delivery Navigator{% endblock %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <style>
+    .quick-links { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 16px; }
+    .quick-links a {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 12px; border: 1px solid var(--border);
+      border-radius: 999px; text-decoration: none; color: var(--text);
+      background: var(--surface);
+    }
+    .home-grid { display: grid; gap: 16px; grid-template-columns: 1fr; align-items: start; }
+    @media (min-width: 980px) { .home-grid { grid-template-columns: 1.2fr 0.8fr; } }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+    .panel h2 { margin: 0 0 8px; font-size: var(--fs-800); }
+    #leafletMap { width: 100%; height: 520px; border-radius: var(--radius); }
+    .legend { display: inline-flex; gap: 8px; align-items: center; margin: 8px 0 12px; }
+    .legend-item { border-radius: 999px; padding: 6px 12px; font-size: 12px; border: 1px solid var(--border); }
+    .legend-low  { background: repeating-linear-gradient(45deg, #e5e7eb, #e5e7eb 6px, #f8fafc 6px, #f8fafc 12px); color: #374151; }
+    .legend-mid  { background: repeating-linear-gradient(45deg, #f6e9d4, #f6e9d4 6px, #fff3e0 6px, #fff3e0 12px); color: #8a5a18; }
+    .legend-high { background: repeating-linear-gradient(45deg, #d8f3dc, #d8f3dc 6px, #c7f6e2 6px, #c7f6e2 12px); color: #065f46; }
+    .route-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 10px; }
+    .route-item { border: 1px dashed var(--border); border-radius: 12px; padding: 10px 12px;
+      display: grid; grid-template-columns: 92px 1fr max-content; gap: 8px; align-items: center;
+      transition: background .15s ease, border-color .15s ease; }
+    .route-item.active { border-color: var(--brand-2); background: color-mix(in oklab, var(--surface) 85%, var(--brand-2)); }
+    .route-time { font-weight: 700; }
+    .route-area { font-size: 14px; }
+    .route-wage { font-weight: 700; }
+    .muted { color: var(--muted); }
+    .sub { font-size: 12px; color: var(--muted); }
+  </style>
+{% endblock %}
 
 {% block content %}
-<h1 style="font-weight:800;margin:8px 0 16px;">いま稼げる地域</h1>
+<nav class="quick-links" aria-label="ショートカット">
+  <a href="/map">マップ</a>
+  <a href="/upload/">データ読み込み</a>
+  <a href="/records">記録</a>
+  <a href="/dashboard">ダッシュボード</a>
+</nav>
 
-<div class="grid cols-2">
-  <!-- 左：地図 -->
-  <section class="card" style="padding:0; height:70vh; overflow:hidden; position:relative;">
-    <div id="map" style="width:100%; height:70vh;"></div>
-
-    <!-- ▼ カラーユニバーサル対応の凡例バー（固定・右下） -->
-    <div id="legend" class="legend" aria-label="ヒートマップ凡例" role="note">
-      <div class="legend-title">凡例（円/h）</div>
-      <div class="legend-scale">
-        <div class="legend-bar"></div>
-        <div class="legend-stops">
-          <span id="stop-p25">—</span>
-          <span id="stop-p50">—</span>
-          <span id="stop-p75">—</span>
-          <span id="stop-max">—</span>
-        </div>
-      </div>
-      <div class="legend-desc">
-        <div class="legend-chip chip pat-high" title="高：斜線">高：斜線</div>
-        <div class="legend-chip chip pat-mid"  title="中：ドット">中：ドット</div>
-        <div class="legend-chip chip pat-low"  title="低：無地">低：無地</div>
-      </div>
-      <div class="legend-note muted">
-        色だけに頼らず、数値とパターンで強弱を示します。
-      </div>
+<section class="home-grid">
+  <div class="panel">
+    <h2>いま稼げるエリア</h2>
+    <p class="muted">色の強さで目安を表示します。点をタップすると詳しく出ます。</p>
+    <div class="legend" aria-label="凡例">
+      <span class="legend-item legend-low">低</span>
+      <span class="legend-item legend-mid">中</span>
+      <span class="legend-item legend-high">高</span>
     </div>
-  </section>
+    <div id="leafletMap" data-endpoint="/api/areas/stats?mode=base"></div>
+  </div>
 
-  <!-- 右：瞬間3エリア提案（今すぐ/30分後/1時間後）＋ 時間帯タイムライン -->
-  <section class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <h3 style="margin:0">瞬間3エリア提案</h3>
-      <div class="muted" id="now-hour">--:--</div>
-    </div>
+  <div class="panel">
+    <h2>今日のおすすめルート（30分刻み）</h2>
+    <p class="muted">はじめの2〜3時間の目安。状況で変わるので、時々更新してください。</p>
+    <ul id="routeList" class="route-list"
+        data-endpoint="/api/areas/today_plan?hours=3&step=30&mode=base">
+      <li class="sub">読み込み中…</li>
+    </ul>
+  </div>
+</section>
+{% endblock %}
 
-    <div style="margin-top:8px">
-      <div class="chip">今すぐ</div>
-      <div id="slot-now" style="margin-top:6px"></div>
-    </div>
-
-    <div style="margin-top:14px">
-      <div class="chip">30分後</div>
-      <div id="slot-30" style="margin-top:6px"></div>
-    </div>
-
-    <div style="margin-top:14px">
-      <div class="chip">1時間後</div>
-      <div id="slot-60" style="margin-top:6px"></div>
-    </div>
-
-    <hr style="border:none;border-top:1px solid var(--line);margin:16px 0">
-
-    <!-- ▼ 時間帯タイムライン -->
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <h3 style="margin:0">時間帯タイムライン（今日）</h3>
-      <div>
-        <button class="btn ghost" id="tl-4h">+4h</button>
-        <button class="btn ghost" id="tl-6h">+6h</button>
-        <button class="btn ghost" id="tl-8h">+8h</button>
-      </div>
-    </div>
-    <div class="muted" style="font-size:12px;margin-top:4px">
-      タップでその時間の地図に切替（KPI: 1秒以内にズーム）。右端のボタンで表示時間数を変更できます。
-    </div>
-
-    <div id="timeline" style="margin-top:10px"></div>
-
-    <div class="muted" style="margin-top:16px;font-size:12px">
-      理由は「実績◎（直近7日で上位）／移動少（現在地から近い）／密度高（サンプル時間が多い）」で表示します。
-    </div>
-  </section>
-</div>
-
-<!-- Leaflet -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
- integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
- integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-
-<style>
-/* ▼ 凡例 */
-.legend{
-  position:absolute; right:10px; bottom:10px;
-  background:rgba(10,18,36,0.9);
-  border:1px solid var(--line);
-  border-radius:12px;
-  padding:10px;
-  width:240px; color:var(--ink); font-size:12px;
-  box-shadow:0 4px 16px rgba(0,0,0,.25);
-}
-.legend-title{font-weight:700; margin-bottom:6px;}
-.legend-scale{display:flex; flex-direction:column; gap:6px;}
-.legend-bar{
-  height:14px; border-radius:6px; border:1px solid rgba(255,255,255,0.25);
-  background: linear-gradient(90deg,
-    rgb(0,90,255) 0%,
-    rgb(90,150,255) 25%,
-    rgb(200,120,80) 75%,
-    rgb(255,80,80) 100%);
-}
-.legend-stops{display:flex; justify-content:space-between; color:#cfe3ff; font-variant-numeric:tabular-nums;}
-.legend-desc{display:flex; gap:6px; margin-top:6px; flex-wrap:wrap}
-.legend-chip{font-size:11px}
-.pat-high{background-image:repeating-linear-gradient(135deg, rgba(255,255,255,0.35) 0 4px, rgba(255,255,255,0.0) 4px 8px);}
-.pat-mid{background-image:radial-gradient(circle at 6px 6px, rgba(255,255,255,0.35) 1.5px, rgba(255,255,255,0) 2px);}
-.pat-low{background-image:none;}
-.legend-note{margin-top:4px; font-size:11px;}
-
-/* ▼ タイムライン */
-.tl-row{
-  display:flex; align-items:center; justify-content:space-between;
-  border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:8px 0;
-  background:var(--card); cursor:pointer; transition:.15s;
-}
-.tl-row:hover{ filter:brightness(1.05); }
-.tl-row.active{ outline:2px solid #3182ce; outline-offset:2px; }
-.tl-left{ display:flex; align-items:center; gap:10px; }
-.tl-time{ font-weight:800; min-width:58px; text-align:center; }
-.tl-badges{ display:flex; gap:6px; flex-wrap:wrap; }
-</style>
-
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script>
-let map, markersLayer, labelsLayer;
-let userPos = null; // 現在地（あれば「移動少」判定）
-let selectedHour = null; // タイムラインで選択中の時間
-let timelineHorizon = 6; // 表示する時間数
-
-// ---- 地図色＆ラベル ----
-function colorFor(yen){
-  // 0〜3000円/h を 0..1 に正規化（暫定）
-  const v = Math.max(0, Math.min(1, (yen || 0) / 3000));
-  const r = Math.floor(255 * v);
-  const g = Math.floor(200 * v);
-  const b = Math.floor(255 * (1 - v));
-  return `rgb(${r},${g},${b})`; // 青→赤寄り
-}
-function makeLabelHtml(yen){
-  return `<div style="
-    background: rgba(0,0,0,0.55);
-    color:#fff; padding:2px 6px; border-radius:8px; font-size:12px; border:1px solid rgba(255,255,255,0.15);
-  ">${Math.round(yen)}<span style="font-size:10px;margin-left:2px">円/h</span></div>`;
-}
-
-// ---- 時刻表示 ----
-function setNowHour(){
-  const d = new Date();
-  document.getElementById('now-hour').textContent =
-    `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-}
-
-// ---- 距離（km） ----
-function haversineKm(lat1, lon1, lat2, lon2){
-  const R = 6371;
-  const toRad = d => d * Math.PI / 180;
-  const dLat = toRad(lat2-lat1);
-  const dLon = toRad(lon2-lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-  return 2*R*Math.asin(Math.sqrt(a));
-}
-
-// ---- 理由タグ ----
-function buildReasons(item){
-  const reasons = [];
-  if(item?.recent_hot) reasons.push('実績◎');
-  if(typeof item?.hours === 'number' && item.hours >= 2) reasons.push('密度高');
-  if(userPos && item?.lat!=null && item?.lng!=null){
-    const d = haversineKm(userPos.lat, userPos.lng, item.lat, item.lng);
-    if(d <= 1.5) reasons.push('移動少');
-  }
-  return reasons.slice(0,2).join(' / ');
-}
-
-// ---- 分位点（p25/p50/p75） ----
-function quantiles(vals){
-  if(!vals.length) return {p25:0,p50:0,p75:0,max:0};
-  const a = vals.slice().sort((x,y)=>x-y);
-  const q = (p)=> {
-    if(a.length===1) return a[0];
-    const pos = (a.length-1)*p;
-    const lo = Math.floor(pos), hi = Math.ceil(pos);
-    if(lo===hi) return a[lo];
-    return a[lo] + (a[hi]-a[lo])*(pos-lo);
+  const WARD_POS = {
+    '千代田区':[35.6938,139.7530],'中央区':[35.6704,139.7720],'港区':[35.6581,139.7516],
+    '新宿区':[35.6938,139.7034],'文京区':[35.7081,139.7528],'台東区':[35.7126,139.7800],
+    '墨田区':[35.7107,139.8016],'江東区':[35.6733,139.8174],'品川区':[35.6093,139.7300],
+    '目黒区':[35.6417,139.6986],'大田区':[35.5613,139.7160],'世田谷区':[35.6467,139.6532],
+    '渋谷区':[35.6618,139.7041],'中野区':[35.7074,139.6659],'杉並区':[35.6993,139.6364],
+    '豊島区':[35.7261,139.7289],'北区':[35.7528,139.7330],'荒川区':[35.7364,139.7830],
+    '板橋区':[35.7511,139.7100],'練馬区':[35.7356,139.6517],'足立区':[35.7754,139.8045],
+    '葛飾区':[35.7436,139.8476],'江戸川区':[35.7060,139.8686]
   };
-  return { p25: q(0.25), p50:q(0.5), p75:q(0.75), max:a[a.length-1] };
-}
-function updateLegendStops(vals){
-  const {p25,p50,p75,max} = quantiles(vals);
-  const fmt = v => `${Math.round(v)}`;
-  document.getElementById('stop-p25').textContent = fmt(p25);
-  document.getElementById('stop-p50').textContent = fmt(p50);
-  document.getElementById('stop-p75').textContent = fmt(p75);
-  document.getElementById('stop-max').textContent = fmt(max);
-}
+  const routeColor = () => getComputedStyle(document.documentElement).getPropertyValue('--brand-2').trim() || '#00754A';
+  const levelColor = (w)=> (w>=1800 ? '#18a058' : (w>=1600 ? '#c4852e' : '#9ca3af'));
 
-// ---- 地図更新（任意の時間） ----
-async function loadMapForHour(hour){
-  selectedHour = hour;
-  const res = await fetch(`/api/areas/stats?hour=${hour}`, {credentials:'same-origin'});
-  const js = await res.json();
+  let dnMap, heatMarkers=[], routeLine=null, routeStops=[];
 
-  markersLayer.clearLayers();
-  labelsLayer.clearLayers();
+  (function initMap(){
+    const el = document.getElementById('leafletMap');
+    if (!el) return;
+    const centerTokyo = [35.681236,139.767125];
+    dnMap = L.map(el, { zoomControl:true }).setView(centerTokyo, 12);
 
-  const hoursVals = [];
-  (js.items||[]).forEach(it=>{
-    if(it.lat==null || it.lng==null) return;
-    const c = colorFor(it.hourly);
-    L.circleMarker([it.lat, it.lng], {
-      radius: 18, weight: 2, color: c, fillColor: c, fillOpacity: 0.35
-    }).addTo(markersLayer).bindTooltip(`${it.name} / 約${Math.round(it.hourly)}円/h`);
+    const light = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{ attribution:'&copy; OpenStreetMap & Carto', maxZoom:19 });
+    const dark  = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{  attribution:'&copy; OpenStreetMap & Carto', maxZoom:19 });
 
-    const divIcon = L.divIcon({html: makeLabelHtml(it.hourly), className: '', iconSize: [60,24]});
-    L.marker([it.lat, it.lng], {icon: divIcon}).addTo(labelsLayer);
-
-    if(typeof it.hourly === 'number') hoursVals.push(it.hourly);
-  });
-
-  updateLegendStops(hoursVals);
-  highlightActiveTimelineRow();
-}
-
-// ---- 現在時間のヒート ----
-async function loadMapForCurrentHour(){
-  const now = new Date();
-  await loadMapForHour(now.getHours());
-}
-
-// ---- 瞬間3エリア（今/30分後/1時間後） ----
-function calcHorizonHours30(){
-  const d = new Date();
-  const h = d.getHours();
-  const m = d.getMinutes();
-  const h0  = h;                         // 今すぐ
-  const h30 = (m < 30 ? h : h+1) % 24;   // 30分後
-  const h60 = (m < 30 ? h+1 : h+2) % 24; // 1時間後
-  return {h0, h30, h60};
-}
-async function fetchTop1(hour){
-  const res = await fetch(`/api/areas/stats?top=1&hour=${hour}`, {credentials:'same-origin'});
-  if(!res.ok) return null;
-  const js = await res.json();
-  return (js.top && js.top.length) ? js.top[0] : null;
-}
-function renderSlot(elId, item){
-  const el = document.getElementById(elId);
-  if(!item){
-    el.innerHTML = `<div class="card muted">データ不足です</div>`;
-    return;
-  }
-  const reasons = buildReasons(item);
-  el.innerHTML = `
-    <div class="card" style="margin:8px 0; padding:12px; display:flex; align-items:center; justify-content:space-between;">
-      <div>
-        <div style="font-weight:700">${item.name}
-          ${item.recent_hot ? '<span class="chip" style="margin-left:6px;background:#3b5c1a;color:#c8f5a2;border-color:#527c2a">実績◎</span>' : ''}
-        </div>
-        <div class="muted" style="font-size:12px">約 ${Math.round(item.hourly)} 円/h ・ サンプル ${item.hours} h</div>
-        ${reasons ? `<div style="font-size:12px;margin-top:4px">${reasons}</div>` : ''}
-      </div>
-      ${item.lat!=null && item.lng!=null ? `<button class="btn" onclick="fly(${item.lat},${item.lng})">ズーム</button>` : ''}
-    </div>
-  `;
-}
-async function loadHorizonCards(){
-  const {h0, h30, h60} = calcHorizonHours30();
-  const [i0, i30, i60] = await Promise.all([fetchTop1(h0), fetchTop1(h30), fetchTop1(h60)]);
-  renderSlot('slot-now', i0);
-  renderSlot('slot-30', i30);
-  renderSlot('slot-60', i60);
-}
-
-// ---- タイムライン：時間配列を作る（今日中） ----
-function buildTimelineHours(count){
-  const d = new Date();
-  const start = d.getHours();
-  const arr = [];
-  for(let i=0;i<count;i++){
-    const h = start + i;
-    if(h > 23) break; // 今日中のみ
-    arr.push(h);
-  }
-  return arr;
-}
-
-// ---- タイムライン描画 ----
-function hLabel(h){ return `${String(h).padStart(2,'0')}:00`; }
-function tlRowHtml(h, item){
-  const title = item ? item.name : 'データ不足';
-  const muted = item ? `約 ${Math.round(item.hourly)} 円/h ・ サンプル ${item.hours} h` : '&nbsp;';
-  const reasons = item ? buildReasons(item) : '';
-  const hot = item?.recent_hot
-    ? '<span class="chip" style="margin-left:6px;background:#3b5c1a;color:#c8f5a2;border-color:#527c2a">実績◎</span>'
-    : '';
-  const zoomBtn = (item && item.lat!=null && item.lng!=null)
-    ? `<button class="btn">ズーム</button>` : '';
-
-  return `
-    <div class="tl-row" data-hour="${h}" ${item?.lat!=null?`data-lat="${item.lat}" data-lng="${item.lng}"`:''}>
-      <div class="tl-left">
-        <div class="tl-time chip">${hLabel(h)}</div>
-        <div>
-          <div style="font-weight:700">${title}${hot}</div>
-          <div class="muted" style="font-size:12px">${muted}</div>
-          ${reasons ? `<div style="font-size:12px;margin-top:4px">${reasons}</div>` : ''}
-        </div>
-      </div>
-      ${zoomBtn}
-    </div>
-  `;
-}
-async function loadTimeline(){
-  const box = document.getElementById('timeline');
-  box.innerHTML = '';
-
-  const hours = buildTimelineHours(timelineHorizon);
-  const promises = hours.map(h => fetchTop1(h));
-  const results = await Promise.all(promises);
-
-  const rows = hours.map((h,idx)=> tlRowHtml(h, results[idx]));
-  box.innerHTML = rows.join('');
-
-  // クリック挙動
-  box.querySelectorAll('.tl-row').forEach(row=>{
-    row.addEventListener('click', async (e)=>{
-      const h = Number(row.dataset.hour);
-      await loadMapForHour(h);
-      // ズーム（座標があれば）
-      const lat = row.dataset.lat ? Number(row.dataset.lat) : null;
-      const lng = row.dataset.lng ? Number(row.dataset.lng) : null;
-      if(lat!=null && lng!=null) fly(lat,lng);
-    });
-  });
-
-  highlightActiveTimelineRow();
-}
-function highlightActiveTimelineRow(){
-  document.querySelectorAll('.tl-row').forEach(el=> el.classList.remove('active'));
-  if(selectedHour==null) return;
-  const target = document.querySelector(`.tl-row[data-hour="${selectedHour}"]`);
-  if(target) target.classList.add('active');
-}
-
-// ---- 地図操作 ----
-function fly(lat,lng){
-  map.flyTo([lat,lng], 15, {duration: 0.7}); // KPI: 1秒以内
-}
-
-// ---- 現在地取得（任意） ----
-function initGeolocation(){
-  if(!navigator.geolocation) return;
-  navigator.geolocation.getCurrentPosition(
-    pos => { userPos = {lat: pos.coords.latitude, lng: pos.coords.longitude}; },
-    _err => {}, {enableHighAccuracy:true, timeout:5000}
-  );
-}
-
-// ---- 起動 ----
-(function boot(){
-  setNowHour();
-
-  map = L.map('map', {zoomControl:true}).setView([35.68,139.76], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '&copy; OpenStreetMap'
-  }).addTo(map);
-  markersLayer = L.layerGroup().addTo(map);
-  labelsLayer = L.layerGroup().addTo(map);
-
-  initGeolocation();
-
-  // 右ペイン：瞬間3エリア
-  loadHorizonCards();
-
-  // 地図：現在時間のヒート
-  loadMapForCurrentHour();
-
-  // タイムライン
-  loadTimeline();
-  document.getElementById('tl-4h').addEventListener('click', ()=>{ timelineHorizon=4; loadTimeline(); });
-  document.getElementById('tl-6h').addEventListener('click', ()=>{ timelineHorizon=6; loadTimeline(); });
-  document.getElementById('tl-8h').addEventListener('click', ()=>{ timelineHorizon=8; loadTimeline(); });
-
-  // 5分ごとに更新
-  setInterval(()=>{
-    setNowHour();
-    loadHorizonCards();
-    // 選択中の時間が今なら更新、それ以外ならタイムラインだけ更新
-    const nowH = new Date().getHours();
-    if(selectedHour===null || selectedHour===nowH){
-      loadMapForCurrentHour();
+    function applyBase() {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'espresso';
+      if (dnMap.hasLayer(light)) dnMap.removeLayer(light);
+      if (dnMap.hasLayer(dark))  dnMap.removeLayer(dark);
+      (isDark ? dark : light).addTo(dnMap);
+      if (routeLine) routeLine.setStyle({ color: routeColor() });
+      routeStops.forEach(m => m.setStyle && m.setStyle({ color: routeColor(), fillColor: routeColor() }));
     }
-    loadTimeline();
-  }, 5*60*1000);
-})();
+    applyBase();
+    new MutationObserver(applyBase).observe(document.documentElement,{ attributes:true, attributeFilter:['data-theme'] });
+
+    (async function loadHeat(){
+      try {
+        const r = await fetch(el.dataset.endpoint,{ credentials:'same-origin' });
+        const data = await r.json();
+        let items=[];
+        if (Array.isArray(data?.items)) items=data.items;
+        else if (Array.isArray(data?.top)) items=data.top;
+        else if (Array.isArray(data)) items=data;
+
+        const markers=[];
+        items.forEach(it=>{
+          const name=it.area||it.name||'エリア';
+          const wage=Number(it.wage_per_h||it.score||0);
+          const center=Array.isArray(it.center)&&it.center.length===2 ? it.center : (WARD_POS[name]||null);
+          if (!center) return;
+          const color=levelColor(wage);
+          const m=L.circleMarker(center,{ radius:10,color,fillColor:color,fillOpacity:.6,weight:2 }).addTo(dnMap);
+          m.bindPopup(`<strong>${name}</strong><br>${wage?`目安：¥${wage}/h`:'目安：—'}${it.note?`<br><span style="color:var(--muted)">${it.note}</span>`:''}`);
+          markers.push(m);
+        });
+        heatMarkers=markers;
+        if (markers.length) dnMap.fitBounds(L.featureGroup(markers).getBounds().pad(0.2));
+      } catch(e){ console.warn(e); }
+    })();
+  })();
+
+  (async function loadRoute(){
+    const list=document.getElementById('routeList');
+    if(!list) return;
+
+    try{
+      const r=await fetch(list.dataset.endpoint,{ credentials:'same-origin' });
+      const data=await r.json();
+      let items=[];
+      if (Array.isArray(data?.items)) items=data.items;
+      else if (Array.isArray(data?.plan)) items=data.plan;
+      else if (Array.isArray(data)) items=data;
+
+      const now=new Date();
+      const pad=n=>String(n).padStart(2,'0');
+      const addMin=(d,m)=>new Date(d.getTime()+m*60000);
+      if(!items.length){
+        items=[
+          {area:'中央区',to:'勝どき',wage_per_h:1820,note:'短距離多め'},
+          {area:'港区',to:'六本木',wage_per_h:1760,note:'坂注意'},
+          {area:'江東区',to:'豊洲',wage_per_h:1690,note:'買い物帰りピーク'}
+        ];
+      }
+      items=items.map((it,i)=>{ if(!it.time){const t=addMin(now,i*30); it.time=`${pad(t.getHours())}:${pad(t.getMinutes())}`;} return it; });
+
+      list.innerHTML=items.map((it,i)=>`
+        <li class="route-item" data-idx="${i}">
+          <div class="route-time">${it.time}</div>
+          <div class="route-area">
+            <strong>${it.area||'—'}</strong>${it.to?` <span class="muted">→ ${it.to}</span>`:''}
+            ${it.note?`<div class="sub">${it.note}</div>`:''}
+          </div>
+          <div class="route-wage">${it.wage_per_h?('¥'+it.wage_per_h):'—'}/h</div>
+        </li>`).join('');
+
+      function coordOf(it){
+        if (Array.isArray(it.center)&&it.center.length===2) return it.center;
+        if (it.lat!=null && it.lng!=null) return [Number(it.lat),Number(it.lng)];
+        const name=it.area||it.name||''; return WARD_POS[name]||null;
+      }
+      const coords=items.map(coordOf).filter(Boolean);
+      if (routeLine){ dnMap.removeLayer(routeLine); routeLine=null; }
+      routeStops.forEach(m=>dnMap.removeLayer(m)); routeStops=[];
+
+      if (coords.length>=2){
+        routeLine=L.polyline(coords,{ color:routeColor(), weight:5, opacity:.9 }).addTo(dnMap);
+        coords.forEach((pt,i)=>{
+          const m=L.circleMarker(pt,{ radius:7, color:routeColor(), fillColor:routeColor(), fillOpacity:.9, weight:2 })
+            .addTo(dnMap)
+            .bindPopup(`<div><strong>${items[i].time}</strong>　${items[i].area||'—'}${items[i].to?` → ${items[i].to}`:''}<br>${items[i].wage_per_h?`目安：¥${items[i].wage_per_h}/h`:'目安：—'}</div>`);
+          routeStops.push(m);
+        });
+        dnMap.fitBounds(routeLine.getBounds().pad(0.25));
+      }
+
+      list.addEventListener('click',(e)=>{
+        const li=e.target.closest('.route-item'); if(!li) return;
+        const i=Number(li.dataset.idx); const pt=coords[i]; if(!pt) return;
+        list.querySelectorAll('.route-item').forEach(x=>x.classList.remove('active'));
+        li.classList.add('active');
+        dnMap.setView(pt, Math.max(dnMap.getZoom(), 13), { animate:true });
+        if (routeStops[i]) routeStops[i].openPopup();
+      });
+
+    }catch(e){
+      console.warn(e);
+      list.innerHTML='<li class="sub">読み込みに失敗しました</li>';
+    }
+  })();
 </script>
 {% endblock %}

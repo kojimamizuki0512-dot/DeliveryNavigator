@@ -1,38 +1,27 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-# ----- 基本環境 -----
-export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-config.settings_prod}"
-export TESSERACT_CMD="${TESSERACT_CMD:-/usr/bin/tesseract}"
-PORT="${PORT:-8000}"
+cd /app
 
-# ----- マイグレーション & 静的ファイル -----
-python manage.py migrate --noinput || true
-python manage.py collectstatic --noinput || true
+echo "[entrypoint] migrate..."
+python manage.py migrate --noinput
 
-# ----- （任意）管理ユーザーの自動作成 -----
-if [ -n "${DJANGO_SUPERUSER_USERNAME:-}" ] && [ -n "${DJANGO_SUPERUSER_PASSWORD:-}" ]; then
-  echo "Ensuring superuser '${DJANGO_SUPERUSER_USERNAME}' exists..."
-  python manage.py createsuperuser \
-    --noinput \
-    --username "$DJANGO_SUPERUSER_USERNAME" \
-    --email "${DJANGO_SUPERUSER_EMAIL:-admin@example.com}" || true
-fi
+echo "[entrypoint] collectstatic..."
+python manage.py collectstatic --noinput
 
-# ----- ワンショットコマンド（任意） -----
-if [ -n "${RUN_MANAGE_CMD:-}" ]; then
-  echo "Running one-off command: ${RUN_MANAGE_CMD}"
+# optional: 一度だけ実行したい manage.py コマンド
+if [[ -n "${RUN_MANAGE_CMD:-}" ]]; then
+  echo "[entrypoint] RUN_MANAGE_CMD=${RUN_MANAGE_CMD}"
   python manage.py ${RUN_MANAGE_CMD} || true
+  export RUN_MANAGE_CMD=""
 fi
 
-# ----- 起動 -----
+# ★ ここが今回のポイント：MEDIA_ROOT を作る
+mkdir -p "${MEDIA_ROOT:-/tmp/dn_media}"
+
+echo "[entrypoint] gunicorn start"
 exec gunicorn config.wsgi:application \
   --bind 0.0.0.0:${PORT:-8000} \
-  --workers ${WEB_CONCURRENCY:-2} \
-  --threads ${WEB_THREADS:-4} \
-  --timeout ${WEB_TIMEOUT:-60} \
-  --graceful-timeout 30 \
-  --access-logfile - \
-  --error-logfile - \
-  --log-level ${GUNICORN_LOG_LEVEL:-info}
-
+  --workers ${GUNICORN_WORKERS:-3} \
+  --threads ${GUNICORN_THREADS:-3} \
+  --timeout ${GUNICORN_TIMEOUT:-60}

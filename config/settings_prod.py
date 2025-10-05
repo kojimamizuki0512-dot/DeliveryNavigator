@@ -6,8 +6,20 @@ import dj_database_url
 DEBUG = False
 
 # ----- Host / CSRF -----
-ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()]
-CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
+# ※ 環境変数が未設定でも Koyeb/ローカルで動く安全なデフォルトを用意
+ALLOWED_HOSTS = [
+    h.strip() for h in os.getenv(
+        "ALLOWED_HOSTS",
+        "*.koyeb.app,localhost,127.0.0.1"
+    ).split(",") if h.strip()
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    o.strip() for o in os.getenv(
+        "CSRF_TRUSTED_ORIGINS",
+        "https://*.koyeb.app"
+    ).split(",") if o.strip()
+]
 
 # ----- HTTPS (Koyeb のプロキシ越し) -----
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -44,8 +56,17 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
+# ===== Media（画像の保存先）=====
+# Koyeb のコンテナでは /app が read-only になることがあるため /tmp 配下をデフォルトに。
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = os.environ.get("MEDIA_ROOT", "/tmp/dn_media")
+
+# 明示しておく（S3 等へ移行するまではローカルFSでOK）
+DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
+
+# アップロード許容量（必要に応じて調整）
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
 
 # ===== Database（Neon 想定：SSL強制）=====
 DATABASES = {
@@ -53,7 +74,7 @@ DATABASES = {
         env="DATABASE_URL",
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
         conn_max_age=600,
-        ssl_require=True,  # ★ 重要：Neon で sslmode=require を強制
+        ssl_require=True,  # ★ Neon などなら sslmode=require を強制
     )
 }
 
